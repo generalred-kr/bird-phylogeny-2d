@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+	<meta charset="utf-8">
+	<title>Avian Phylogeny Master - [V13] 2D (Pizza/Tree) + Time Slider</title>
+	<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+	<style>
+		body { margin: 0; background: #010101; color: #eee; font-family: 'Pretendard', sans-serif; overflow: hidden; }
+		#plot { width: 100vw; height: 100vh; }
+		#ui-panel { position: absolute; top: 15px; left: 15px; width: 308px; background: rgba(10,10,10,0.96); padding: 18px; border-radius: 12px; z-index: 100; border: 1px solid #333; backdrop-filter: blur(20px); box-shadow: 0 10px 40px rgba(0,0,0,0.9); }
+		.btn-group { display: flex; gap: 4px; margin-bottom: 10px; }
+		.region-btn, .mode-btn { flex: 1; padding: 8px; background: #222; color: #888; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 11px; transition: 0.2s; }
+		.region-btn.active, .mode-btn.active { background: #007AFF !important; color: #fff !important; }
+		.sub-btn { background: #333; color: #ccc; border: 1px solid #444; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 11px; flex: 1; transition: 0.2s; margin-bottom: 8px; font-weight: bold; }
+		.sub-btn:hover { background: #444; color: #fff; border-color: #666; }
+		.search-box-container { display: flex; align-items: center; gap: 6px; }
+		input#sch { flex: 1; padding: 10px; background: #111; border: 1px solid #444; color: #fff; border-radius: 6px; font-size: 13px; outline: none; box-sizing: border-box; }
+		.search-reset-btn { background: #333; color: #fff; border: 1px solid #555; border-radius: 6px; width: 34px; height: 34px; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 14px; transition: 0.2s; }
+		.search-reset-btn:hover { background: #E32B20; border-color: #FF3B30; }
+		#analysis-window { margin-top: 10px; max-height: 38vh; overflow-y: auto; border: 1px solid #333; border-radius: 8px; display: none; background: #050505; }
+		table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 10.5px; }
+		th { position: sticky; top: 0; background: #1a1a1a; padding: 8px 4px; color: #777; border-bottom: 1px solid #333; cursor: pointer; }
+		td { padding: 6px 4px; border-bottom: 1px solid #1a1a1a; text-align: center; cursor: pointer; }
+		
+		#legend-container { position: fixed; top: 15px; right: 15px; width: 185px; background: rgba(5,5,5,0.88); padding: 12px; border-radius: 10px; border: 1px solid #333; z-index: 1000; max-height: 30vh; overflow-y: auto; font-size: 10px; scrollbar-width: thin; scrollbar-color: #444 transparent; }
+		#legend-container::-webkit-scrollbar { width: 4px; }
+		#legend-container::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+		.legend-item { display: flex; align-items: center; margin-bottom: 6px; color: #aaa; cursor: pointer; line-height: 1.2; }
+		.legend-box { width: 9px; height: 9px; margin-right: 7px; border-radius: 2px; flex-shrink: 0; }
+		.legend-item:hover { color: #fff; }
+		.leg-section-title { font-size: 9px; color: #FFD700; margin: 10px 0 6px 0; font-weight: bold; opacity: 0.7; }
+		
+		.mrca-box { background: rgba(0,122,255,0.1); border: 1px solid #007AFF; padding: 10px; border-radius: 6px; margin-bottom: 8px; font-size: 11px; display: none; }
+		input[type=range] { -webkit-appearance: none; background: #333; height: 4px; width: 100%; border-radius: 2px; outline: none; }
+		input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #007AFF; cursor: pointer; }
+		.ebird-link { text-decoration: none; margin-left: 5px; color: #007AFF; }
+		.ebird-link:hover { filter: brightness(1.5); }
+		
+		#loading-overlay { position: fixed; top:0; left:0; width:100vw; height:100vh; background: rgba(1,1,1,0.85); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #fff; backdrop-filter: blur(5px); transition: opacity 0.3s; }
+		.spinner { border: 4px solid rgba(255,255,255,0.1); width: 40px; height: 40px; border-radius: 50%; border-left-color: #007AFF; animation: spin 1s linear infinite; margin-bottom: 15px; }
+		@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+		/* [V12.9] 불꽃놀이 타임 슬라이더 — 맵 하단 중앙에 배치, 충분히 크게. 검색창과 분리. */
+		#ts-slider-container {
+			position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+			width: 78vw; max-width: 1200px;
+			background: rgba(10,10,10,0.94);
+			padding: 18px 26px 22px 26px;
+			border-radius: 14px;
+			border: 1px solid #333;
+			z-index: 500; display: none;
+			backdrop-filter: blur(18px);
+			box-shadow: 0 12px 44px rgba(0,0,0,0.85);
+		}
+		#ts-slider-header { display: flex; align-items: center; gap: 16px; margin-bottom: 4px; }
+		#ts-play-btn {
+			width: 44px; height: 44px; border-radius: 50%;
+			background: linear-gradient(135deg, #FF6B35, #C3272B);
+			color: #fff; border: none; cursor: pointer;
+			font-size: 16px; font-weight: bold;
+			display: flex; align-items: center; justify-content: center;
+			box-shadow: 0 0 14px rgba(255,107,53,0.45);
+			transition: 0.2s;
+		}
+		#ts-play-btn:hover { filter: brightness(1.18); }
+		#ts-time-label {
+			color: #FFD700; font-weight: bold; font-size: 17px; min-width: 360px;
+			text-shadow: 0 0 10px rgba(255,215,0,0.35);
+			letter-spacing: 0.5px;
+		}
+		#ts-subtitle { color: #777; font-size: 11px; margin-left: auto; max-width: 380px; text-align: right; line-height: 1.35; }
+
+		#ts-slider-track {
+			position: relative; height: 54px; margin: 0 10px; padding-top: 8px;
+		}
+		#ts-time-slider {
+			position: relative; z-index: 2;
+			width: 100%; height: 8px;
+			-webkit-appearance: none; appearance: none;
+			background: linear-gradient(to right, #120208 0%, #2a0a0a 15%, #4a2a10 45%, #3d2a10 70%, #1a3d5a 100%);
+			border-radius: 4px; outline: none;
+			border: 1px solid #444;
+		}
+		#ts-time-slider::-webkit-slider-thumb {
+			-webkit-appearance: none; appearance: none;
+			width: 24px; height: 24px; border-radius: 50%;
+			background: radial-gradient(circle at 35% 35%, #FFE580, #FF6B35 60%, #C3272B);
+			border: 2px solid #FFF;
+			cursor: pointer;
+			box-shadow: 0 0 18px rgba(255,107,53,0.85), 0 0 6px rgba(255,215,0,0.6);
+		}
+		#ts-time-slider::-moz-range-thumb {
+			width: 24px; height: 24px; border-radius: 50%;
+			background: radial-gradient(circle at 35% 35%, #FFE580, #FF6B35 60%, #C3272B);
+			border: 2px solid #FFF;
+			cursor: pointer;
+			box-shadow: 0 0 18px rgba(255,107,53,0.85);
+		}
+
+		#ts-tick-layer {
+			position: absolute; top: 30px; left: 0; width: 100%; height: 24px;
+			z-index: 3; pointer-events: none;
+		}
+		.ts-tick {
+			position: absolute; top: 0;
+			pointer-events: auto; cursor: pointer;
+			transform: translateX(-50%);
+		}
+		.ts-tick-mark {
+			width: 2px; height: 14px; margin: 0 auto;
+			background: #888; opacity: 0.85;
+			transition: 0.15s;
+		}
+		.ts-tick.ts-tick-geo .ts-tick-mark {
+			width: 3px; height: 18px; background: #FFD700; opacity: 1;
+			box-shadow: 0 0 8px rgba(255,215,0,0.8);
+		}
+		.ts-tick.ts-tick-kpg .ts-tick-mark {
+			width: 3px; height: 22px;
+			background: linear-gradient(to bottom, #FF3B30, #FFD700);
+			box-shadow: 0 0 12px rgba(255,59,48,0.9);
+			opacity: 1;
+		}
+		.ts-tick:hover .ts-tick-mark {
+			background: #FFF !important; width: 4px !important; opacity: 1 !important;
+			box-shadow: 0 0 14px rgba(255,255,255,0.95);
+		}
+		.ts-tick-dot {
+			width: 8px; height: 8px; border-radius: 50%;
+			margin: 1px auto 0 auto;
+			background: transparent;
+		}
+		.ts-tick:hover .ts-tick-dot { background: #FFD700; box-shadow: 0 0 8px rgba(255,215,0,0.9); }
+
+		#ts-popup {
+			position: absolute; bottom: 68px;
+			background: rgba(18,18,18,0.98);
+			color: #eee; padding: 14px 18px 14px 18px;
+			border: 1px solid #FFD700; border-radius: 10px;
+			font-size: 12.5px; line-height: 1.5;
+			max-width: 320px; min-width: 200px;
+			z-index: 700; display: none;
+			box-shadow: 0 8px 30px rgba(0,0,0,0.9), 0 0 18px rgba(255,215,0,0.18);
+			transform: translateX(-50%);
+		}
+		#ts-popup::after {
+			content: ''; position: absolute; bottom: -8px; left: 50%;
+			transform: translateX(-50%);
+			width: 0; height: 0;
+			border-left: 8px solid transparent;
+			border-right: 8px solid transparent;
+			border-top: 8px solid #FFD700;
+		}
+		#ts-popup .ts-popup-close {
+			position: absolute; top: 4px; right: 8px; cursor: pointer;
+			color: #888; font-size: 14px;
+		}
+		#ts-popup .ts-popup-close:hover { color: #FF6B35; }
+		#ts-popup .ts-popup-title { color: #FFD700; font-weight: bold; margin-bottom: 6px; font-size: 13.5px; padding-right: 16px; }
+		#ts-popup .ts-popup-age { color: #FF6B35; font-weight: bold; font-size: 11.5px; margin-bottom: 6px; }
+		#ts-popup .ts-popup-body { color: #bbb; }
+		.ts-tick.ts-tick-fam .ts-tick-mark { width: 2px; height: 18px; background: #5ac8fa; opacity: 0.95; }
+		.ts-tick.ts-tick-gen .ts-tick-mark { width: 2px; height: 12px; background: #a8e063; opacity: 0.8; }
+		.ts-tick.ts-tick-sp .ts-tick-mark { width: 1px; height: 7px; background: #888; opacity: 0.55; }
+		.sub-btn.active { background: #007AFF; color: #fff; border-color: #007AFF; }
+		#help-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(560px, 92vw); max-height: 82vh; overflow-y: auto; background: rgba(12,12,12,0.98); border: 1px solid #444; border-radius: 12px; padding: 20px 24px; z-index: 3000; box-shadow: 0 12px 50px rgba(0,0,0,0.9); font-size: 13px; line-height: 1.65; color: #ddd; }
+		#help-modal h3 { margin: 0 0 10px 0; font-size: 16px; color: #FFD700; }
+		#help-modal h4 { margin: 14px 0 4px 0; font-size: 13px; color: #5ac8fa; }
+		#help-modal code { background: #222; padding: 1px 6px; border-radius: 4px; color: #FFD700; }
+		#help-modal .help-close { position: absolute; top: 10px; right: 14px; cursor: pointer; color: #888; font-size: 16px; }
+		#help-modal ul { margin: 4px 0; padding-left: 18px; }
+		#ts-popup-body { white-space: pre-line; }
+		.ts-tick.ts-tick-maj .ts-tick-mark { width: 3px; height: 16px; background: #ff9f0a; opacity: 0.95; }
+		#ts-popup-list { max-height: 200px; overflow-y: auto; }
+		#ts-popup-act { display: none; margin: 8px 0 0 0; width: 100%; flex: none; }
+
+	</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+	<div class="spinner"></div>
+	<div id="loading-text">엔진 초기화 및 계통수 렌더링 중...</div>
+</div>
+
+<div id="ui-panel">
+	<div class="btn-group">
+		<button id="btn-world" onclick="setRegion('world')" class="region-btn active">세계새</button>
+		<button id="btn-korea" onclick="setRegion('korea')" class="region-btn">한국새</button>
+		<button id="btn-mybird" onclick="setRegion('mybird')" class="region-btn">나의 탐조</button>
+		<button onclick="document.getElementById('csv-upload').click()" class="region-btn" style="flex: 0.3; padding: 8px 0;" title="eBird CSV 업데이트">📥</button>
+	</div>
+	<input type="file" id="csv-upload" accept=".csv" style="display: none;" onchange="handleCsvUpload(event)">
+	
+	<div class="btn-group">
+		<button onclick="switchMode('pizza')" id="btn-pizza" class="mode-btn active">피자 (2D)</button>
+		<button onclick="switchMode('tree')" id="btn-tree" class="mode-btn">나무 (2D)</button>
+		<button onclick="tsToggle()" id="btn-ts" class="mode-btn" title="시간 슬라이더">⏱ 시간</button>
+	</div>
+	<div id="mrca-display" class="mrca-box"></div>
+	
+	<div class="search-box-container">
+		<input type="text" id="sch" placeholder="참새 / 종:Passer montanus / 목:수리목 / 과:매과" onkeyup="if(event.key==='Enter') executeSearch()">
+		<button onclick="document.getElementById('sch').value=''; executeSearch();" class="search-reset-btn" title="검색 필터 해제">✖</button>
+		<button onclick="toggleHelp(true)" class="search-reset-btn" title="검색 방법">?</button>
+	</div>
+
+	<div id="analysis-window">
+		<table>
+			<thead><tr><th onclick="sortTable('kn')">종명 ↕</th><th title="검색 결과의 최근공통조상에서 갈라진 횟수" onclick="sortTable('relSteps')">분지 ↕</th><th title="그 종이 가장 가까운 친척과 갈라진 시점" onclick="sortTable('divergenceAge')">연대 ↕</th><th title="기준 종과의 계통 거리 (Mya)" onclick="sortTable('phyloDist')">거리 ↕</th><th title="친족 호칭으로 바꾼 관계" onclick="sortTable('kinRank')">촌수 ↕</th></tr></thead>
+			<tbody id="resBody"></tbody>
+		</table>
+	</div>
+</div>
+
+<div id="legend-container"></div>
+<div id="plot"></div>
+
+<!-- [V13] 2D 시간 슬라이더: 시점 T 에 존재하던 계통만 그린다. 목 선택 시 과·속·종 눈금으로 전환. -->
+<div id="ts-slider-container">
+	<div id="ts-slider-header">
+		<button id="ts-play-btn" onclick="tsTogglePlay()" title="재생/정지">▶</button>
+		<span id="ts-time-label">0 Mya (현재)</span>
+		<span id="ts-subtitle"></span>
+	</div>
+	<div id="ts-slider-track">
+		<input type="range" id="ts-time-slider" min="0" max="10000" value="10000" step="5" oninput="tsOnSliderInput()">
+		<div id="ts-tick-layer"></div>
+	</div>
+	<div id="ts-popup">
+		<div class="ts-popup-close" onclick="document.getElementById('ts-popup').style.display='none'">✖</div>
+		<div class="ts-popup-title" id="ts-popup-title"></div>
+		<div class="ts-popup-age" id="ts-popup-age"></div>
+		<div class="ts-popup-body" id="ts-popup-body"></div>
+		<div id="ts-popup-list"></div>
+		<button id="ts-popup-act" class="sub-btn" onclick="tsPickAct()">이 목 자세히 보기</button>
+	</div>
+</div>
+
+
+<div id="help-modal">
+	<div class="help-close" onclick="toggleHelp(false)">✖</div>
+	<h3>사용 방법</h3>
+	<h4>기본 검색</h4>
+	<ul>
+		<li>검색창에 이름을 입력하고 <b>Enter</b>. 한글 이름, 영어 이름, 학명 어느 것이든 되고, 일부만 써도 찾습니다 (예: <code>참새</code>, <code>sparrow</code>, <code>Passer</code>). 대소문자, 띄어쓰기, 밑줄은 무시됩니다.</li>
+	</ul>
+	<h4>접두어로 범위 지정</h4>
+	<ul>
+		<li><code>종:Passer montanus</code> 이름이 정확히 일치하는 종 (한글·영어·학명)</li>
+		<li><code>목:수리목</code> 또는 <code>order:Accipitriformes</code> 해당 목의 모든 종</li>
+		<li><code>과:매과</code> 또는 <code>family:Falconidae</code> 해당 과의 모든 종</li>
+	</ul>
+	<h4>여러 개 한 번에</h4>
+	<ul>
+		<li>쉼표로 이어 씁니다. 접두어는 뒤 항목에 이어집니다. 예: <code>목:수리목, 매목</code>은 두 목 모두, <code>참새, 종:박새</code>는 이름 검색과 종 검색을 함께 합니다.</li>
+	</ul>
+	<h4>검색 후 화면</h4>
+	<ul>
+		<li>검색한 종들과 최근공통조상(노란 다이아몬드)까지의 가지가 강조되고, 왼쪽 표에 분지·연대·거리·촌수가 나옵니다.</li>
+		<li>표에서 종 이름을 누르면 그 종이 기준(나)이 되어 거리와 촌수가 다시 계산됩니다. 열 제목을 누르면 정렬됩니다.</li>
+		<li>검색창 옆 <b>✖</b>는 검색을 해제하고 전체 보기로 돌아갑니다.</li>
+		<li>오른쪽 목록에서 목 이름을 누르면 그 목이 바로 검색됩니다.</li>
+	</ul>
+	<h4>지역 / 나의 탐조</h4>
+	<ul>
+		<li><b>세계새 / 한국새 / 나의 탐조</b> 버튼은 검색 범위를 정합니다. 한국새는 한국명이 있는 종, 나의 탐조는 내가 본 종만 대상이 됩니다.</li>
+		<li>📥 버튼으로 eBird 기록(MyEBirdData.csv)을 올리면 나의 탐조 목록이 저장됩니다.</li>
+	</ul>
+	<h4>시간 슬라이더</h4>
+	<ul>
+		<li><b>⏱ 시간</b>을 켜면 과거에서 시작합니다. 슬라이더를 움직이거나 ▶로 재생하면 그 시점에 살아 있던 계통이 보입니다.</li>
+		<li>슬라이더 아래 눈금을 누르면 그 분기가 일어난 시점의 지도로 이동하고 해당 분기점이 표시됩니다.</li>
+		<li><code>목:수리목</code>처럼 목 하나를 검색하면 눈금이 그 목 안의 과(파랑)·속(초록)·종(회색) 분기로 바뀝니다. 참새목처럼 큰 목은 과 눈금만 나옵니다.</li>
+		<li>과 눈금을 누르고 <b>이 과 자세히 보기</b>를 누르면 (또는 <code>과:Corvidae</code>로 검색하면) 그 과의 모든 속·종 눈금으로 내려갑니다.</li>
+		<li><b>눈금의 의미</b>: 각 목·과·속이 가장 가까운 자매 계통과 갈라진 시점입니다(그룹 내부 분기가 아님). 눈금을 누르면 자매 계통 목록이 나옵니다.</li>
+		<li>참새목처럼 이름 없는 큰 분기(예: 약 48 Mya에 5,316종 / 1,396종으로 갈라짐)는 <b>주황 눈금(대분기)</b>으로 표시됩니다.</li>
+		<li>슬라이더에서 붙어 있는 눈금은 하나로 묶여 있습니다. 눌러서 목록에서 고르세요. 검색 ✖로 전체 보기로 돌아갑니다.</li>
+	</ul>
+	<h4>결과 표의 용어</h4>
+	<ul>
+		<li><b>분지</b>: 검색 결과 전체의 최근공통조상에서 그 종까지 가지가 갈라진 횟수(단계 수)입니다. 클수록 공통조상에서 여러 번 더 갈라져 나온 종입니다.</li>
+		<li><b>연대</b>: 그 종이 가장 가까운 친척 종과 마지막으로 갈라진 시점입니다. 단위는 Mya(백만 년 전)이고, 표에는 "몇 만 년 전" 형태로 나옵니다. 값이 작을수록 최근에 갈라졌습니다.</li>
+		<li><b>거리</b>: 기준 종과 그 종 사이의 계통 거리(Mya)입니다. 두 종의 최근공통조상까지 각각 거슬러 올라간 연대를 더한 값이라, 공통조상 연대의 약 2배가 됩니다. 클수록 먼 관계입니다.</li>
+		<li><b>촌수</b>: 분류와 연대를 한국 친족 호칭으로 바꾼 것입니다. 같은 속은 형제, 같은 과는 4촌, 같은 목 안에서 공통조상이 40 Mya 이하이면 6촌, 그보다 오래되면 8촌입니다. 다른 목은 기준 종이 속한 목에서 본 상대 거리에 따라 먼 친척, 아주 먼 친척, 거의 남으로 나뉩니다.</li>
+		<li>기준 종은 표에서 종을 클릭해 바꿀 수 있고, 헤더를 누르면 그 열로 정렬합니다.</li>
+	</ul>
+</div>
+
+<script>
+	const ORDER_KOR_MAP = {"Accipitriformes":"수리목","Anseriformes":"기러기목","Apodiformes":"칼새목","Caprimulgiformes":"쏙독새목","Charadriiformes":"도요목","Ciconiiformes":"황새목","Columbiformes":"비둘기목","Coraciiformes":"파랑새목","Cuculiformes":"두견이목","Falconiformes":"매목","Galliformes":"닭목","Gaviiformes":"아비목","Gruiformes":"두루미목","Passeriformes":"참새목","Pelecaniformes":"사다새목","Piciformes":"딱따구리목","Podicipediformes":"논병아리목","Procellariiformes":"슴새목","Strigiformes":"올빼미목","Suliformes":"얼가니새목","Otidiformes":"느시목","Struthioniformes":"타조목","Rheiformes":"레아목","Casuariiformes":"화식조목","Apterygiformes":"키위목","Tinamiformes":"티나무목","Phoenicopteriformes":"홍학목","Mesitornithiformes":"메사이트목","Pterocliformes":"사막꿩목","Musophagiformes":"투라코목","Steatornithiformes":"기름쏙독새목","Nyctibiiformes":"포투새목","Podargiformes":"프로그마우스목","Aegotheliformes":"올빼미쏙독새목","Opisthocomiformes":"호아친목","Eurypygiformes":"태양새목","Phaethontiformes":"열대새목","Sphenisciformes":"펭귄목","Cathartiformes":"콘도르목","Coliiformes":"쥐새목","Leptosomiformes":"쿠쿠롤러목","Trogoniformes":"비단날개새목","Bucerotiformes":"코뿔새목","Cariamiformes":"세리에마목","Psittaciformes":"앵무새목"};
+	const PHYLO_SORTED_ORDERS = ["Struthioniformes","Rheiformes","Casuariiformes","Apterygiformes","Tinamiformes","Galliformes","Anseriformes","Phoenicopteriformes","Podicipediformes","Columbiformes","Mesitornithiformes","Pterocliformes","Otidiformes","Musophagiformes","Cuculiformes","Caprimulgiformes","Steatornithiformes","Nyctibiiformes","Podargiformes","Aegotheliformes","Apodiformes","Opisthocomiformes","Gruiformes","Charadriiformes","Eurypygiformes","Phaethontiformes","Gaviiformes","Sphenisciformes","Procellariiformes","Ciconiiformes","Suliformes","Pelecaniformes","Cathartiformes","Accipitriformes","Strigiformes","Coliiformes","Leptosomiformes","Trogoniformes","Bucerotiformes","Coraciiformes","Piciformes","Cariamiformes","Falconiformes","Psittaciformes","Passeriformes"];
+	// [V12.8] 목 → 인덱스 O(1) 룩업. sort 비교자에서 indexOf(O(47))를 Map.get으로 교체.
+	const PHYLO_ORDER_INDEX = new Map(PHYLO_SORTED_ORDERS.map((o, i) => [o, i]));
+	
+
+	let masterData = [], treeMap = {};
+	let currentRegion = 'world', currentMode = 'pizza';
+	let currentTargets = [], currentReferenceId = null, currentGlobalMrcaId = null;
+	let highlightedNodeId = null;
+	let sortCol = 'phyloDist', sortAsc = true, polarisId = null;
+	let isFirstRenderInMode = true;
+
+	let myBirdSet = new Set();
+	try {
+		const savedBirds = localStorage.getItem('myBirdList');
+		if (savedBirds) myBirdSet = new Set(JSON.parse(savedBirds));
+	} catch (e) {}
+
+	window.addEventListener('resize', () => { Plotly.Plots.resize('plot'); });
+	const PLOT_CONFIG = { responsive: true, scrollZoom: true, displayModeBar: false, doubleClick: false };
+
+	// [V12.4] 주요 분기군(clade)별 색 가족 시스템.
+	//         각 분기군은 고유 hue 가족을 갖고, 같은 분기군 안에서 앞쪽 멤버(계통 순서상 이른)는 진함,
+	//         뒤쪽 멤버는 연함 (lightness 42% → 62%, saturation 90% → 78%)
+	const PHYLO_CLADES = [
+		{ name: "Palaeognathae",     ko: "고악류",         hue:  50, members: ["Struthioniformes","Rheiformes","Casuariiformes","Apterygiformes","Tinamiformes"] },
+		{ name: "Galloanserae",      ko: "닭기러기류",     hue:  28, members: ["Galliformes","Anseriformes"] },
+		{ name: "Mirandornithes",    ko: "경이조류",       hue:  85, members: ["Phoenicopteriformes","Podicipediformes"] },
+		{ name: "Columbimorphae",    ko: "비둘기형류",     hue: 130, members: ["Columbiformes","Mesitornithiformes","Pterocliformes"] },
+		{ name: "Otidimorphae",      ko: "느시형류",       hue: 160, members: ["Otidiformes","Musophagiformes","Cuculiformes"] },
+		{ name: "Strisores",         ko: "밤날치류",       hue: 188, members: ["Caprimulgiformes","Steatornithiformes","Nyctibiiformes","Podargiformes","Aegotheliformes","Apodiformes"] },
+		{ name: "Opisthocomiformes", ko: "호아친류",       hue: 205, members: ["Opisthocomiformes"] },
+		{ name: "Gruae",             ko: "두루미류",       hue: 215, members: ["Gruiformes"] },
+		{ name: "Charadriiformes_c", ko: "도요류",         hue: 225, members: ["Charadriiformes"] },
+		{ name: "Eurypygimorphae",   ko: "태양새형류",     hue: 240, members: ["Eurypygiformes","Phaethontiformes"] },
+		{ name: "Aequornithes",      ko: "수생조류",       hue: 258, members: ["Gaviiformes","Sphenisciformes","Procellariiformes","Ciconiiformes","Suliformes","Pelecaniformes"] },
+		{ name: "Afroaves",          ko: "아프리카조류",   hue: 290, members: ["Cathartiformes","Accipitriformes","Strigiformes","Coliiformes","Leptosomiformes","Trogoniformes","Bucerotiformes","Coraciiformes","Piciformes"] },
+		{ name: "Australaves",       ko: "남방조류",       hue:   0, members: ["Cariamiformes","Falconiformes","Psittaciformes","Passeriformes"] }
+	];
+	const CLADE_OF_ORDER = {};
+	PHYLO_CLADES.forEach(cl => cl.members.forEach((o, i) => {
+		CLADE_OF_ORDER[o] = { clade: cl, idx: i, n: cl.members.length };
+	}));
+
+	// [V12.7] 색 캐시: 목 수는 ~47개인데 렌더마다 수만 번 호출 → toFixed/template 비용 제거
+	const _phyloColorCache = Object.create(null);
+	function getPhyloColor(o) {
+		if(!o) return "#555";
+		const cached = _phyloColorCache[o];
+		if (cached) return cached;
+		const info = CLADE_OF_ORDER[o];
+		if(!info) return (_phyloColorCache[o] = "#666");
+		// 같은 분기군 안에서: 앞쪽(계통 순서 이른) = 진함, 뒤쪽 = 연함
+		const frac = info.n > 1 ? (info.idx / (info.n - 1)) : 0.35;
+		const L = 42 + frac * 20;  // 42% → 62%
+		const S = 90 - frac * 12;  // 90% → 78%
+		return (_phyloColorCache[o] = `hsl(${info.clade.hue}, ${S.toFixed(1)}%, ${L.toFixed(1)}%)`);
+	}
+	// [V12.6] 엣지 색: 해당 내부 노드의 후손 중 "가장 먼저 분기된(좌측=basal) 목"의 색 사용
+	//         leaf는 자기 자신의 목, 내부 노드는 _firstOrder (ladderize된 최좌측 후손 잎의 목)
+	function getEdgeColor(node) {
+		return getPhyloColor(node._firstOrder || node.o);
+	}
+
+	function formatKoreanAge(ageNum) {
+		if(!ageNum || ageNum === 0) return "0만 년";
+		let totalMan = Math.round(ageNum * 100); 
+		if (totalMan >= 10000) {
+			let eok = Math.floor(totalMan / 10000);
+			let man = totalMan % 10000;
+			return man > 0 ? `${eok}억 ${man}만 년` : `${eok}억 년`;
+		}
+		return `${totalMan}만 년`;
+	}
+
+	async function initApp() {
+		try {
+			const r = await fetch('Metadata_2D.json?v=13.0');
+			const data = await r.json();
+			// [V12.8] 단일 패스로 병합: treeMap / _isLeaf / leaves / childrenOf / polarisId 를 한 번에 수집.
+			//         기존엔 map→forEach→find→filter→forEach 로 5차례 전체 스캔.
+			//         _sXx 검색 정규화는 leaf일 때만 (내부 노드는 어차피 검색 대상 아님).
+			masterData = Object.keys(data).map(id => ({id, ...data[id]}));
+			const _norm = (s) => (s || "").toLowerCase().replace(/[\s_]/g, "");
+			const childrenOf = {};
+			let leaves = [];
+			polarisId = null;
+			for (let i = 0; i < masterData.length; i++) {
+				const d = masterData[i];
+				treeMap[d.id] = d;
+				d.absAge = d.age || d.absAge || 0;
+				d._isLeaf = !!(d.o && !String(d.n).includes('Node_'));
+				// [V12.19] 전처리 캐시: 렌더 루프에서 String(d.id) 반복 강제변환 제거
+				d._idStr = String(d.id);
+				// steps: JSON 순서상 부모가 먼저 오므로 부모의 steps + 1 (O(1)로 메모이제이션)
+				d.steps = d.p && treeMap[d.p] ? treeMap[d.p].steps + 1 : 0;
+				if (d._isLeaf) {
+					// 검색에 쓰이는 정규화 필드는 잎에만 필요 (내부 노드는 검색 결과로 나올 일 없음)
+					d._sKo = _norm(d.ko); d._sN = _norm(d.n); d._sEn = _norm(d.en);
+					d._sO = _norm(d.o); d._sF = _norm(d.f); d._sFko = _norm(d.f_ko);
+					d._sOko = _norm(ORDER_KOR_MAP[d.o]);
+					leaves.push(d);
+				}
+				if (d.p) {
+					(childrenOf[d.p] = childrenOf[d.p] || []).push(d);
+				} else if (!polarisId && (!d.p || String(d.p).trim() === '')) {
+					polarisId = d.id;
+				}
+			}
+				// [V13] 2D 전용 ladderize: 자매 직속 분기 연대가 오래된(큰 absAge) 쪽을 좌측에 둔다.
+				const dfsIdx2D = new Map();
+				{
+					let counter = 0;
+					const stack = [polarisId];
+					while (stack.length) {
+						const nid = stack.pop();
+						const node = treeMap[nid];
+						if (!node) continue;
+						const kids = childrenOf[nid] || [];
+						if (kids.length === 0) {
+							if (node._isLeaf) dfsIdx2D.set(nid, counter++);
+						} else {
+							const sortedKids = kids.slice().sort((a, b) => (a.absAge || 0) - (b.absAge || 0));
+							for (let i = 0; i < sortedKids.length; i++) stack.push(sortedKids[i].id);
+						}
+					}
+				}
+				// 1차: PHYLO_SORTED_ORDERS (목 블록 유지) / 2차: dfsIdx2D (2D flipped ladderize).
+				// 목(order) 간 순서는 색 정체성 보존을 위해 손대지 않음 — 같은 목 안에서만 재배열됨.
+				leaves.sort((a, b) => {
+					const oa = PHYLO_ORDER_INDEX.get(a.o) ?? -1;
+					const ob = PHYLO_ORDER_INDEX.get(b.o) ?? -1;
+					if (oa !== ob) return oa - ob;
+					return (dfsIdx2D.get(a.id) ?? 0) - (dfsIdx2D.get(b.id) ?? 0);
+				});
+			// [V12.2] 잎마다 인덱스 범위를 저장. 내부 노드는 후손 인덱스 범위의 "중점(midpoint)"으로 좌표 계산.
+			//         기존 mean() 방식은 자식 가계 크기가 불균형할 때 한쪽으로 치우쳐서 선이 다른 목을 가로지르는 문제가 있었음.
+			const leavesLen = leaves.length;
+			leaves.forEach((d, i) => {
+				d._minLeafIdx = i;
+				d._maxLeafIdx = i;
+				// [V12.6] 엣지 색: leaf는 자기 자신이 "첫 목"
+				d._firstOrder = d.o;
+				let frac = i / (leavesLen - 1 || 1);
+				let angleRad = (90 - frac * 330) * Math.PI / 180;
+				d._ang = angleRad;
+				let r = 110 - d.absAge;
+				d.calc_pizza_x = r * Math.cos(angleRad); d.calc_pizza_y = r * Math.sin(angleRad);
+				d.calc_tree_x = (frac - 0.5) * 200; d.calc_tree_y = d.absAge;
+			});
+			// [V12.7] 반복적 postorder. 기존 재귀 + masterData.filter(O(N))는 전체 O(N²)였음.
+			//         childrenOf 인덱스와 스택 기반으로 O(N)로 단축. 22,385 노드에서 ~500배 개선.
+			function calcAncestors(rootId) {
+				// 1단계: preorder 푸시 → 역순이 postorder
+				const order = [];
+				const st = [rootId];
+				while (st.length) {
+					const nid = st.pop();
+					order.push(nid);
+					const kids = childrenOf[nid];
+					if (kids) for (let i = 0; i < kids.length; i++) st.push(kids[i].id);
+				}
+				// 2단계: 역순(=postorder)으로 처리
+				for (let i = order.length - 1; i >= 0; i--) {
+					const node = treeMap[order[i]];
+					if (!node || node.calc_pizza_x !== undefined) continue;
+					const kids = childrenOf[node.id];
+					// validKids 인라인 필터 + min/max/leftmost 1-pass
+					let minIdx = Infinity, maxIdx = -Infinity;
+					let leftmostIdx = Infinity, leftmostFirstOrder = null;
+					let hasValid = false;
+					if (kids) {
+						for (let k = 0; k < kids.length; k++) {
+							const c = kids[k];
+							if (c.calc_pizza_x === undefined || c._minLeafIdx === undefined) continue;
+							hasValid = true;
+							if (c._minLeafIdx < minIdx) minIdx = c._minLeafIdx;
+							if (c._maxLeafIdx > maxIdx) maxIdx = c._maxLeafIdx;
+							if (c._minLeafIdx < leftmostIdx) { leftmostIdx = c._minLeafIdx; leftmostFirstOrder = c._firstOrder; }
+						}
+					}
+					if (hasValid) {
+						node._minLeafIdx = minIdx;
+						node._maxLeafIdx = maxIdx;
+						node._firstOrder = leftmostFirstOrder;
+						const midFrac = ((minIdx + maxIdx) / 2) / (leavesLen - 1 || 1);
+						node.calc_tree_x = (midFrac - 0.5) * 200;
+						node.calc_tree_y = node.absAge;
+						const angleRad = (90 - midFrac * 330) * Math.PI / 180;
+						node._ang = angleRad;
+						const r = Math.max(0, 110 - node.absAge);
+						node.calc_pizza_x = r * Math.cos(angleRad);
+						node.calc_pizza_y = r * Math.sin(angleRad);
+					} else {
+						// 고아 내부 노드: _minLeafIdx는 undefined로 남겨 부모 계산에서 제외
+						node.calc_pizza_x = 0; node.calc_pizza_y = 0; node._ang = 0;
+						node.calc_tree_x = 0; node.calc_tree_y = node.absAge;
+					}
+				}
+			}
+			calcAncestors(polarisId);
+			computeOrderTicks(childrenOf);
+			buildTsTicks();
+			tsUpdateSubtitle();
+			document.getElementById('loading-overlay').style.display = 'none';
+			isFirstRenderInMode = true;
+			// [V12.22] masterData가 채워진 직후 mybird 마스크 초기화 — 저장된 myBirdList 있을 때 첫 렌더부터 사용.
+			refreshIsObsMask();
+			createLegend(); renderPlot();
+		} catch (error) { console.error(error); document.getElementById('loading-text').innerText = "데이터 로딩 실패."; }
+	}
+
+	// ========================================================
+	// [V13] 2D 시간 슬라이더
+	//   시점 T(Mya)에 존재하던 계통만 그린다. T보다 최근인 분기는 숨기고, 가지는 T에서 잘라 끝점을 찍는다.
+	//   전체 보기: 목 단위 눈금 + 지질 사건 (K-Pg 기준 비선형 축)
+	//   목 선택 시: 그 목 내부의 과 / 속 / 종 눈금 (선형 축, 그 목의 공통조상 연대까지)
+	// ========================================================
+	const TS_MAX_AGE = 120;
+	const TS_ANIM_MS = 30000;
+	const TS_RENDER_THROTTLE_MS = 140;
+	const TS_KPG_AGE = 66;
+	const TS_KPG_PCT = 20;
+	let tsEnabled = false;
+	let tsCurrentAge = null;      // null = 슬라이더 꺼짐 또는 현재(0)
+	let tsPlaying = false, tsAnimFrame = null, tsInputThrottle = null;
+	let tsPlayStartMs = 0, tsPlayStartVal = 0, tsLastRenderMs = 0;
+	let tsFocusOrder = null;
+	let tsAxis = { max: TS_MAX_AGE, kpg: true };
+	let tsLineageCount = 0;
+	let tsOrderTicks = [];
+	let tsPopupAct = null;
+	let tsKids = null;            // 부모 id -> 자식 노드 배열
+	let tsFocusFamily = null;
+	let tsMark = null;            // [{id, label}]: 눈금을 눌렀을 때 지도에 표시할 분기 노드들
+	const _tsFocusCache = {};
+
+	const TS_GEO_EVENTS = [
+		{ age: 100.0, kind: 'geo', title: "고악·신악 분기", body: "타조·레아·키위 등을 포함하는 고악류(Palaeognathae)와 나머지 현생 조류(Neognathae)의 공통조상이 갈라진 시점. 백악기 중후기." },
+		{ age: 86.0,  kind: 'geo', title: "Galloanserae 분기", body: "닭목(Galliformes)과 기러기목(Anseriformes)을 묶는 '가금류' 계통이 다른 현생 조류로부터 분리." },
+		{ age: 66.0,  kind: 'kpg', title: "K-Pg 대멸종", body: "운석 충돌로 비조류 공룡이 멸종. 살아남은 신악류가 빈 생태지위로 폭발적 적응방사(adaptive radiation)를 시작합니다. 지금 보이는 목 대부분이 이 직후 수백만 년 이내에 분기." },
+		{ age: 56.0,  kind: 'geo', title: "PETM 극한 온난기", body: "고온 극대기. 열대성 계통이 지구 전역으로 확산." },
+		{ age: 34.0,  kind: 'geo', title: "Eocene-Oligocene 전환", body: "남극 빙상 형성, 기후 냉각. 초원성·한대성·해양성 계통이 다변화." },
+		{ age: 23.0,  kind: 'geo', title: "중신세 시작", body: "참새목(Passeriformes) 내부 대방사 — Passerida와 Corvida 분지. 현생 조류 종 다양성의 절반 이상이 이후 등장." },
+		{ age: 5.3,   kind: 'geo', title: "Pliocene 빙하기 반복", body: "빙기·간빙기가 반복되며 지리적 격리가 잦아지고, 근연 종이 대거 분화." }
+	];
+
+	// ---- 분기(=자매 계통과 갈라진 시점) 계산 도우미 ----
+	function tsLeavesUnder(id) {
+		const res = [], st = [id];
+		while (st.length) {
+			const n = treeMap[st.pop()];
+			if (!n) continue;
+			if (n._isLeaf) { res.push(n); continue; }
+			const ks = tsKids[n.id];
+			if (ks) for (let i = 0; i < ks.length; i++) st.push(ks[i].id);
+		}
+		return res;
+	}
+	function tsGroupName(d, level) {
+		if (level === 'order') return ORDER_KOR_MAP[d.o] || d.o;
+		if (level === 'family') return d.f || '(과 미상)';
+		return String(d.n).split('_')[0] + '속';
+	}
+	function tsTopNames(leaves, level, n) {
+		const c = {};
+		leaves.forEach(d => { const k = tsGroupName(d, level); c[k] = (c[k] || 0) + 1; });
+		const ent = Object.entries(c).sort((a, b) => b[1] - a[1]);
+		return ent.slice(0, n).map(e => `${e[0]} ${e[1]}종`).join(', ') + (ent.length > n ? ' 등' : '');
+	}
+	// 자매 계통 설명: parentId(분기점)의 자식 중 mrcaId 가 아닌 쪽
+	function tsSisterText(parentId, mrcaId, level) {
+		const others = (tsKids[parentId] || []).filter(c => c.id !== mrcaId);
+		const leaves = [];
+		others.forEach(c => tsLeavesUnder(c.id).forEach(l => leaves.push(l)));
+		if (!leaves.length) return '';
+		return `가장 가까운 자매 계통: ${tsTopNames(leaves, level, 3)} (총 ${leaves.length.toLocaleString()}종)`;
+	}
+	// 목 단위 눈금: 그 목이 가장 가까운 자매 계통과 갈라진 시점 (목의 MRCA 바로 위 분기점)
+	function computeOrderTicks(childrenOf) {
+		tsKids = childrenOf;
+		const groups = {};
+		for (let i = 0; i < masterData.length; i++) {
+			const d = masterData[i];
+			if (d._isLeaf && d.o) (groups[d.o] = groups[d.o] || []).push(d.id);
+		}
+		tsOrderTicks = [];
+		Object.entries(groups).forEach(([o, ids]) => {
+			const m = ids.length === 1 ? ids[0] : findMRCA(ids, treeMap);
+			const mn = treeMap[m];
+			const par = mn && treeMap[mn.p];
+			if (!par) return;
+			tsOrderTicks.push({ age: par.absAge, key: o, tag: 'order', count: ids.length, nodeId: par.id, mrcaId: m });
+		});
+	}
+
+	// 목 / 과 안의 눈금 (모두 "자매 계통과 갈라진 시점" 기준)
+	//   목: 과 눈금 + (속이 250개 이하인 목만) 속 눈금 + (120종 이하만) 종 눈금
+	//   과: 속 눈금 + (200종 이하만) 종 눈금
+	//   공통: 후손이 많은 큰 분기(과 이름이 없는 분기)를 "대분기"로 추가 (최대 40개)
+	function tsGetFocus(order, family) {
+		const key = family ? 'F:' + family : 'O:' + order;
+		if (_tsFocusCache[key]) return _tsFocusCache[key];
+		const leaves = masterData.filter(d => d._isLeaf && (family ? d.f === family : d.o === order));
+		const ids = leaves.map(d => d.id);
+		const m = ids.length === 1 ? ids[0] : findMRCA(ids, treeMap);
+		const mn = treeMap[m];
+		const crown = mn ? mn.absAge : 0;
+		const par = mn && treeMap[mn.p];
+		const stem = par ? par.absAge : crown;      // 이 목/과가 자매와 갈라진 시점 = 슬라이더 시작점
+		const ticks = [];
+		const usedNodes = new Set(par ? [par.id] : []);
+		const byNode = {};
+		const push = (tk) => {
+			if (!tk.nodeId || tk.age <= 0.2 || tk.age >= stem) return;
+			const ex = byNode[tk.nodeId];
+			if (ex) {
+				// 같은 분기점을 공유하는 눈금(자매끼리, 과와 속이 같은 노드 등)은 이름을 덧붙여 모두 찾을 수 있게 한다.
+				if (tk.tag !== 'species' && ex.tag !== 'major' && !ex.label.includes(tk.label) && ex.label.length < 70) ex.label += ' · ' + tk.label;
+				return;
+			}
+			if (usedNodes.has(tk.nodeId)) return;
+			byNode[tk.nodeId] = tk; ticks.push(tk);
+		};
+		const stemOf = (mrcaId) => { const x = treeMap[mrcaId]; return x && treeMap[x.p]; };
+		const fam = {}, gen = {};
+		leaves.forEach(d => {
+			if (d.f) (fam[d.f] = fam[d.f] || []).push(d);
+			const g = String(d.n).split('_')[0];
+			if (g) (gen[g] = gen[g] || []).push(d);
+		});
+		const nGenera = Object.keys(gen).length;
+		const showFamily = !family;
+		const showGenus = family ? true : nGenera <= 250;
+		const showSpecies = leaves.length <= (family ? 200 : 120);
+		const groupTick = (arr, tag, label, extra) => {
+			const mm = arr.length === 1 ? arr[0].id : findMRCA(arr.map(d => d.id), treeMap);
+			const p = stemOf(mm);
+			if (!p) return;
+			push(Object.assign({ age: p.absAge, tag, label, count: arr.length, nodeId: p.id, mrcaId: mm }, extra || {}));
+		};
+		if (showFamily) Object.entries(fam).forEach(([f, arr]) => {
+			const ko = arr.find(d => d.f_ko);
+			groupTick(arr, 'family', (ko ? ko.f_ko + ' ' : '') + f, { key: f });
+		});
+		if (showGenus) Object.entries(gen).forEach(([g, arr]) => groupTick(arr, 'genus', g + '속'));
+		if (showSpecies) leaves.forEach(d => {
+			const p = treeMap[d.p];
+			if (p) push({ age: p.absAge, tag: 'species', label: (d.ko || d.n), count: 1, nodeId: p.id, mrcaId: d.id });
+		});
+		// 대분기: 양쪽 계통이 모두 충분히 큰 내부 분기 (이름이 없는 큰 분기를 눈금으로 보완)
+		if (mn && !mn._isLeaf) {
+			const size = {}, order_ = [], st = [m];
+			while (st.length) { const id = st.pop(); order_.push(id); const ks = tsKids[id]; if (ks) ks.forEach(k => { if (!k._isLeaf) st.push(k.id); }); }
+			for (let q = order_.length - 1; q >= 0; q--) {
+				const id = order_[q];
+				let s = 0; (tsKids[id] || []).forEach(k => { s += k._isLeaf ? 1 : (size[k.id] || 0); });
+				size[id] = s;
+			}
+			const thr = Math.max(5, Math.round(leaves.length * 0.01));
+			const cand = [];
+			order_.forEach(id => {
+				const ks = tsKids[id] || [];
+				if (ks.length < 2) return;
+				const sz = ks.map(k => k._isLeaf ? 1 : (size[k.id] || 0)).sort((a, b) => b - a);
+				if (sz[1] >= thr) cand.push({ id, small: sz[1], big: sz[0] });
+			});
+			cand.sort((a, b) => b.small - a.small);
+			cand.slice(0, 40).forEach(c => {
+				push({ age: treeMap[c.id].absAge, tag: 'major', label: `대분기 ${c.big.toLocaleString()}종 | ${c.small.toLocaleString()}종`, count: c.big + c.small, nodeId: c.id, mrcaId: c.id });
+			});
+		}
+		return (_tsFocusCache[key] = { age: crown, stem, ticks, count: leaves.length, genusHidden: !showGenus, mrcaId: m, level: family ? 'genus' : 'family' });
+	}
+
+	function tsAgeToPercent(age) {
+		const M = tsAxis.max;
+		let p;
+		if (!tsAxis.kpg) p = 100 * (M - age) / M;
+		else if (age >= TS_KPG_AGE) p = TS_KPG_PCT * (M - age) / (M - TS_KPG_AGE);
+		else p = TS_KPG_PCT + (100 - TS_KPG_PCT) * (TS_KPG_AGE - age) / TS_KPG_AGE;
+		return Math.max(0, Math.min(100, p));
+	}
+	function tsPercentToAge(pct) {
+		const M = tsAxis.max;
+		if (!tsAxis.kpg) return M - (pct / 100) * M;
+		if (pct <= TS_KPG_PCT) return M - (pct / TS_KPG_PCT) * (M - TS_KPG_AGE);
+		return TS_KPG_AGE - ((pct - TS_KPG_PCT) / (100 - TS_KPG_PCT)) * TS_KPG_AGE;
+	}
+
+	function buildTsTicks() {
+		const layer = document.getElementById('ts-tick-layer');
+		if (!layer) return;
+		layer.innerHTML = '';
+		const add = (cls, pct, title, onclick, markStyle) => {
+			const el = document.createElement('div');
+			el.className = 'ts-tick ' + cls;
+			el.style.left = pct + '%';
+			el.innerHTML = '<div class="ts-tick-mark"' + (markStyle ? ' style="' + markStyle + '"' : '') + '></div><div class="ts-tick-dot"></div>';
+			el.title = title;
+			el.onclick = (e) => { e.stopPropagation(); onclick(); };
+			layer.appendChild(el);
+		};
+		TS_GEO_EVENTS.forEach(ev => {
+			if (ev.age >= tsAxis.max - 0.5) return;
+			const pct = tsAgeToPercent(ev.age);
+			add(ev.kind === 'kpg' ? 'ts-tick-kpg' : 'ts-tick-geo', pct, `${ev.title} (${ev.age} Mya)`, () => { tsJumpTo(ev.age, null); tsShowPopup(ev, pct); });
+		});
+
+		// 눈금 항목: {age, pct, tag, title, body(문자열 또는 함수), markLabel, cls, markStyle, act, count}
+		let items = [];
+		if (!tsFocusOrder && !tsFocusFamily) {
+			tsOrderTicks.filter(br => br.age > 0.2 && br.age < tsAxis.max - 0.5).forEach(br => {
+				const ko = ORDER_KOR_MAP[br.key] || br.key;
+				items.push({
+					age: br.age, nodeId: br.nodeId, tag: 'order', count: br.count,
+					name: ko, title: `${ko} (${br.key})`, markLabel: ko + ' 분기',
+					body: () => `${ko}가 가장 가까운 자매 계통과 갈라진 시점입니다. 현재 트리 기준 ${br.count}종.\n` + tsSisterText(br.nodeId, br.mrcaId, 'order'),
+					cls: '', markStyle: 'height:10px;background:#888;opacity:0.6;', act: { type: 'order', key: br.key }
+				});
+			});
+		} else {
+			const f = tsGetFocus(tsFocusOrder, tsFocusFamily);
+			const cls = { family: 'ts-tick-fam', genus: 'ts-tick-gen', species: 'ts-tick-sp', major: 'ts-tick-maj' };
+			const what = { family: '과', genus: '속', species: '종' };
+			const lvl = { family: 'family', genus: 'genus', species: 'genus' };
+			f.ticks.forEach(tk => {
+				const isMajor = tk.tag === 'major';
+				items.push({
+					age: tk.age, nodeId: tk.nodeId, tag: tk.tag, count: tk.count,
+					name: tk.label, title: isMajor ? tk.label : `${tk.label} (${what[tk.tag]})`, markLabel: isMajor ? '대분기' : tk.label + ' 분기',
+					body: isMajor
+						? () => { const ks = (tsKids[tk.nodeId] || []).map(k => tsLeavesUnder(k.id)).sort((a, b) => b.length - a.length);
+							const lv = tsFocusFamily ? 'genus' : 'family';
+							return '이 분기점에서 큰 두 계통이 갈라졌습니다.\n· ' + ks.slice(0, 2).map(L => `${L.length.toLocaleString()}종: ${tsTopNames(L, lv, 3)}`).join('\n· '); }
+						: () => `이 ${what[tk.tag]}가 가장 가까운 자매 계통과 갈라진 시점입니다. 현재 트리 기준 ${tk.count}종.\n` + tsSisterText(tk.nodeId, tk.mrcaId, lvl[tk.tag]),
+					cls: cls[tk.tag], markStyle: '', act: tk.tag === 'family' ? { type: 'family', key: tk.key } : null
+				});
+			});
+		}
+		items.forEach(it => { it.pct = tsAgeToPercent(it.age); });
+		items.sort((x, y) => x.pct - y.pct);
+		// 슬라이더 위에서 0.6% 이내로 붙은 눈금은 하나로 묶고, 누르면 목록을 보여 준다.
+		const clusters = [];
+		items.forEach(it => {
+			const c = clusters[clusters.length - 1];
+			if (c && it.pct - c[0].pct < 0.6) c.push(it); else clusters.push([it]);   // 묶음의 첫 눈금 기준 (사슬처럼 길게 이어지지 않게)
+		});
+		clusters.forEach(c => {
+			if (c.length === 1) {
+				const it = c[0];
+				add(it.cls, it.pct, `${it.title}: ${it.age.toFixed(1)} Mya · ${it.count}종`, () => {
+					tsJumpTo(it.age, [{ id: it.nodeId, label: it.markLabel }]);
+					tsShowPopup({ age: it.age, title: it.title, body: it.body, act: it.act }, it.pct);
+				}, it.markStyle);
+			} else {
+				const pct = c.reduce((s, x) => s + x.pct, 0) / c.length;
+				const minAge = Math.min(...c.map(x => x.age));
+				const listTxt = c.slice(0, 12).map(x => `${x.name} ${x.age.toFixed(1)} Mya`).join(' / ') + (c.length > 12 ? ` 외 ${c.length - 12}개` : '');
+				add('', pct, `${c.length}개가 이 부근에서 분기: ${listTxt}`, () => {
+					tsJumpTo(minAge, c.map(x => ({ id: x.nodeId, label: x.markLabel })));
+					tsShowPopup({ age: minAge, title: `${c.length}개가 거의 같은 시기에 분기`, body: '아래 항목을 누르면 해당 분기 시점으로 이동합니다.', list: c }, pct);
+				}, 'height:15px;width:3px;background:#ccc;opacity:0.95;');
+			}
+		});
+	}
+
+	function tsSetPopupAct(act) {
+		tsPopupAct = act || null;
+		const btn = document.getElementById('ts-popup-act');
+		if (tsPopupAct) { btn.textContent = tsPopupAct.type === 'order' ? '이 목 자세히 보기' : '이 과 자세히 보기'; btn.style.display = 'block'; }
+		else btn.style.display = 'none';
+	}
+
+	function tsShowPopup(ev, leftPct) {
+		const pop = document.getElementById('ts-popup');
+		document.getElementById('ts-popup-title').textContent = ev.title;
+		document.getElementById('ts-popup-age').textContent = `${ev.age.toFixed ? ev.age.toFixed(1) : ev.age} Mya · ${formatKoreanAge(ev.age)} 전`;
+		document.getElementById('ts-popup-body').textContent = (typeof ev.body === 'function') ? ev.body() : ev.body;
+		tsSetPopupAct(ev.act);
+		const listEl = document.getElementById('ts-popup-list');
+		listEl.innerHTML = '';
+		if (ev.list) {
+			ev.list.forEach(x => {
+				const btn = document.createElement('button');
+				btn.className = 'sub-btn';
+				btn.style.cssText = 'flex:none;margin:6px 6px 0 0;';
+				btn.textContent = `${x.name} · ${x.age.toFixed(1)} Mya`;
+				btn.onclick = (e) => {
+					e.stopPropagation();
+					tsJumpTo(x.age, [{ id: x.nodeId, label: x.markLabel }]);
+					document.getElementById('ts-popup-title').textContent = x.title;
+					document.getElementById('ts-popup-age').textContent = `${x.age.toFixed(1)} Mya · ${formatKoreanAge(x.age)} 전`;
+					document.getElementById('ts-popup-body').textContent = (typeof x.body === 'function') ? x.body() : x.body;
+					tsSetPopupAct(x.act);
+				};
+				listEl.appendChild(btn);
+			});
+		}
+		pop.style.left = leftPct + '%';
+		pop.style.display = 'block';
+	}
+
+	// 눈금 클릭: 슬라이더를 그 시점으로 옮기고 지도에도 반영
+	function tsJumpTo(age, marks) {
+		tsStopPlay();
+		const slider = document.getElementById('ts-time-slider');
+		slider.value = Math.round(tsAgeToPercent(age) * 100);
+		tsCurrentAge = age < 0.05 ? null : age;
+		tsMark = (marks && marks.length) ? marks : null;
+		tsUpdateLabel();
+		renderPlot();
+	}
+
+	// 과거(왼쪽 끝)에서 시작하도록 슬라이더를 되돌림
+	function tsResetToPast() {
+		tsStopPlay();
+		document.getElementById('ts-time-slider').value = 0;
+		tsCurrentAge = tsAxis.max;
+		tsMark = null;
+		tsLineageCount = 0;
+		tsUpdateLabel();
+	}
+
+	function tsPickAct() {
+		if (!tsPopupAct) return;
+		document.getElementById('sch').value = (tsPopupAct.type === 'order' ? 'Order:' : 'Family:') + String(tsPopupAct.key).split(' (')[0].replace(/[,:]/g, ' ').trim();
+		document.getElementById('ts-popup').style.display = 'none';
+		window.tsExactFamily = (tsPopupAct.type === 'family') ? tsPopupAct.key : null;
+		try { executeSearch(); } finally { window.tsExactFamily = null; }
+	}
+
+	function tsUpdateSubtitle() {
+		const el = document.getElementById('ts-subtitle');
+		if (!el) return;
+		if (tsFocusFamily) {
+			const f = tsGetFocus(tsFocusOrder, tsFocusFamily);
+			el.textContent = `${ORDER_KOR_MAP[tsFocusOrder] || tsFocusOrder} › ${tsFocusFamily} 내부 분기 (${f.count}종) · 초록=속, 회색=종, 주황=대분기 · 눈금은 각 그룹이 자매 계통과 갈라진 시점 · 검색 ✖ 로 전체 보기`;
+		} else if (tsFocusOrder) {
+			const f = tsGetFocus(tsFocusOrder, null);
+			el.textContent = `${ORDER_KOR_MAP[tsFocusOrder] || tsFocusOrder} 내부 분기 (${f.count}종) · 파랑=과, 초록=속, 회색=종, 주황=대분기 · 눈금은 각 그룹이 자매 계통과 갈라진 시점 · 검색 ✖ 로 전체 보기` +
+				(f.genusHidden ? ' · 큰 목이라 과 눈금만 표시합니다. 과 눈금을 누르고 "이 과 자세히 보기"로 속·종까지 내려가세요.' : '');
+		} else {
+			el.textContent = '슬라이더를 움직이면 그 시점에 살아 있던 계통이 가지 끝 점으로 보입니다. 목 눈금은 그 목이 가장 가까운 자매 계통과 갈라진 시점이고, 누르면 "이 목 자세히 보기"로 내려갈 수 있습니다.';
+		}
+	}
+
+	function tsUpdateLabel() {
+		const label = document.getElementById('ts-time-label');
+		if (!label) return;
+		const age = tsCurrentAge || 0;
+		if (age < 0.05) label.textContent = '0 Mya (현재)';
+		else label.textContent = `${age.toFixed(1)} Mya · ${formatKoreanAge(age)} 전 · 계통 ${tsLineageCount.toLocaleString()}개`;
+	}
+
+	// 목/과 포커스 변경. 슬라이더 축을 다시 맞춘다.
+	function tsSetFocus(order, family) {
+		family = family || null;
+		if (order === tsFocusOrder && family === tsFocusFamily) return;
+		tsFocusOrder = order || null;
+		tsFocusFamily = family;
+		if (tsFocusOrder || tsFocusFamily) {
+			const f = tsGetFocus(tsFocusOrder, tsFocusFamily);
+			tsAxis = { max: Math.max(1, Math.ceil(f.stem)), kpg: false };
+		} else {
+			tsAxis = { max: TS_MAX_AGE, kpg: true };
+		}
+		tsStopPlay();
+		buildTsTicks();
+		tsUpdateSubtitle();
+		if (tsEnabled) tsResetToPast();
+		tsMark = null;
+		document.getElementById('ts-popup').style.display = 'none';
+	}
+
+	function tsOnSliderInput() {
+		const slider = document.getElementById('ts-time-slider');
+		const age = tsPercentToAge((+slider.value) / 100);
+		tsCurrentAge = age < 0.05 ? null : age;
+		tsMark = null;
+		tsUpdateLabel();
+		if (tsPlaying) return;
+		if (tsInputThrottle) return;
+		tsInputThrottle = setTimeout(() => { tsInputThrottle = null; renderPlot(); }, 70);
+	}
+
+	function tsStopPlay() {
+		tsPlaying = false;
+		if (tsAnimFrame) cancelAnimationFrame(tsAnimFrame);
+		tsAnimFrame = null;
+		const btn = document.getElementById('ts-play-btn');
+		if (btn) btn.textContent = '▶';
+	}
+
+	function tsTogglePlay() {
+		const btn = document.getElementById('ts-play-btn');
+		const slider = document.getElementById('ts-time-slider');
+		if (tsPlaying) { tsStopPlay(); renderPlot(); return; }
+		if (+slider.value >= 9990) {
+			slider.value = 0;
+			tsCurrentAge = tsAxis.max;
+			tsUpdateLabel();
+		}
+		tsMark = null;
+		tsPlaying = true;
+		btn.textContent = '❚❚';
+		tsPlayStartMs = performance.now();
+		tsPlayStartVal = +slider.value;
+		tsLastRenderMs = 0;
+		const step = (now) => {
+			if (!tsPlaying) return;
+			const elapsed = now - tsPlayStartMs;
+			const remaining = 10000 - tsPlayStartVal;
+			const totalMs = TS_ANIM_MS * (remaining / 10000);
+			const progress = Math.min(1, elapsed / Math.max(1, totalMs));
+			const newVal = tsPlayStartVal + remaining * progress;
+			slider.value = newVal;
+			const age = tsPercentToAge(newVal / 100);
+			tsCurrentAge = age < 0.05 ? null : age;
+			if (now - tsLastRenderMs > TS_RENDER_THROTTLE_MS) {
+				tsLastRenderMs = now;
+				renderPlot();
+			}
+			if (progress >= 1) {
+				tsStopPlay();
+				tsCurrentAge = null;
+				renderPlot();
+				return;
+			}
+			tsAnimFrame = requestAnimationFrame(step);
+		};
+		tsAnimFrame = requestAnimationFrame(step);
+	}
+
+	function tsToggle() {
+		tsEnabled = !tsEnabled;
+		const c = document.getElementById('ts-slider-container');
+		document.getElementById('btn-ts').classList.toggle('active', tsEnabled);
+		if (tsEnabled) {
+			c.style.display = 'block';
+			buildTsTicks();
+			tsUpdateSubtitle();
+			tsResetToPast();
+			document.getElementById('ts-popup').style.display = 'none';
+		} else {
+			tsStopPlay();
+			c.style.display = 'none';
+			tsCurrentAge = null;
+			tsMark = null;
+		}
+		renderPlot();
+	}
+
+	function setupInteraction() {
+		const plotDiv = document.getElementById('plot');
+		plotDiv.on('plotly_click', function(data){
+			if (!data || !data.points || data.points.length === 0) { if (highlightedNodeId) { highlightedNodeId = null; renderPlot(); } return; }
+			let clickedId = data.points[0].customdata; if (!clickedId) return;
+			highlightedNodeId = clickedId; renderPlot();
+		});
+	}
+
+	function toggleHelp(show) {
+		const m = document.getElementById('help-modal');
+		m.style.display = (show === undefined ? m.style.display !== 'block' : show) ? 'block' : 'none';
+	}
+
+	function createLegend() {
+		const container = document.getElementById('legend-container');
+		container.innerHTML = '<div class="leg-section-title">조류 계통 리스트 (통합)</div>';
+		PHYLO_SORTED_ORDERS.forEach(o => {
+			if(ORDER_KOR_MAP[o]) {
+				const item = document.createElement('div'); item.className='legend-item';
+				item.innerHTML=`<div class="legend-box" style="background:${getPhyloColor(o)}"></div>${ORDER_KOR_MAP[o]} (${o})`;
+				item.onclick=()=>{ document.getElementById('sch').value=`목:${ORDER_KOR_MAP[o]}`; executeSearch(); };
+				container.appendChild(item);
+			}
+		});
+		let orderAges = {};
+		masterData.forEach(d => { if(d.o && !orderAges[d.o]) orderAges[d.o] = d.absAge; else if(d.o) orderAges[d.o] = Math.max(orderAges[d.o], d.absAge); });
+		const otherOrders = Object.keys(orderAges).filter(o => !ORDER_KOR_MAP[o] && !o.includes('Root') && !o.includes('Early'));
+		otherOrders.sort((a,b) => orderAges[b] - orderAges[a]);
+		if(otherOrders.length > 0) {
+			container.insertAdjacentHTML('beforeend', '<div class="leg-section-title">글로벌 계통 (ABS순)</div>');
+			otherOrders.forEach(o => {
+				const item = document.createElement('div'); item.className='legend-item';
+				item.innerHTML=`<div class="legend-box" style="background:${getPhyloColor(o)}"></div>${o}`;
+				item.onclick=()=>{ document.getElementById('sch').value=`Order:${o}`; executeSearch(); };
+				container.appendChild(item);
+			});
+		}
+	}
+
+	function getCoord(d, mode) {
+		if (mode === 'tree') return { x: d.calc_tree_x || 0, y: d.calc_tree_y || 0 };
+		return { x: d.calc_pizza_x || 0, y: d.calc_pizza_y || 0 };
+	}
+
+	function renderPlot() {
+		const isPizza = (currentMode === 'pizza');
+		const isSearching = currentTargets.length > 0;
+		const searchSet = new Set(currentTargets.map(t => t._idStr || String(t.id)));
+		const extants = {x:[],y:[],text:[],color:[], opacity:[], size:[], customdata:[]};
+		const backdrop = {x:[],y:[]};
+		const tips = {x:[],y:[],text:[],color:[],customdata:[]};
+		const polaris = {x:[],y:[],text:[],customdata:[]};
+		const highlighted = {x:[],y:[],text:[],customdata:[]};
+		const searchLabels = {x:[], y:[], text:[]};
+		const mrcaMarker = {x:[], y:[], text:[], customdata:[]};
+		const orderLines = {}; const edgesDrawn = new Set();
+		const currentTraces = [];
+
+		const YELLOW = '#FFD700';
+		const mrcaAge = (isSearching && currentGlobalMrcaId && treeMap[currentGlobalMrcaId]) ? treeMap[currentGlobalMrcaId].absAge : null;
+		const mrcaActive = mrcaAge !== null;
+		const baseSize = 4;
+		const isKorea = (currentRegion === 'korea');
+		const isMybird = (currentRegion === 'mybird');
+		// [V13] 시간 게이트: T 이후(더 최근)에 생긴 분기는 그리지 않고, 가지는 T에서 자른다.
+		const T = (tsEnabled && tsCurrentAge !== null && tsCurrentAge > 0.05) ? tsCurrentAge : null;
+
+		const _makeHover = (d) => {
+			const hoverName = isKorea ? (d.ko || d.n) : (d.en || d.n);
+			return d.id === polarisId ? '최고 공통조상' : `${hoverName} (${d.n})`;
+		};
+
+		const pushEdge = (cur, p) => {
+			const edgeColor = (mrcaActive && cur.absAge >= mrcaAge) ? YELLOW : getEdgeColor(cur);
+			if (!orderLines[edgeColor]) orderLines[edgeColor] = {x:[], y:[]};
+			const L = orderLines[edgeColor];
+			const cut = (T !== null && cur.absAge < T);
+			let tx, ty;
+			if (currentMode === 'tree') {
+				const cx = cur.calc_tree_x || 0, px = p.calc_tree_x || 0, py = p.calc_tree_y || 0;
+				const y0 = cut ? T : (cur.calc_tree_y || 0);
+				L.x.push(cx, cx, px, null);
+				L.y.push(y0, py, py, null);
+				tx = cx; ty = y0;
+			} else {
+				// 반지름은 max(0, 110 - 연대). 110 Mya보다 오래된 루트는 중심(0,0)에 놓인다.
+				const ac = cur._ang || 0, ap = p._ang || 0;
+				const r0 = cut ? Math.max(0, 110 - T) : Math.max(0, 110 - cur.absAge);   // T가 110 Mya를 넘는 구간은 중심에 고정
+				const rp = Math.max(0, 110 - p.absAge);
+				let dTheta = ap - ac;
+				while (dTheta > Math.PI) dTheta -= 2 * Math.PI;
+				while (dTheta < -Math.PI) dTheta += 2 * Math.PI;
+				L.x.push(r0 * Math.cos(ac), rp * Math.cos(ac));
+				L.y.push(r0 * Math.sin(ac), rp * Math.sin(ac));
+				const nArc = 8;
+				for (let k = 1; k <= nArc; k++) {
+					const t = ac + dTheta * (k / nArc);
+					L.x.push(rp * Math.cos(t)); L.y.push(rp * Math.sin(t));
+				}
+				L.x.push(null); L.y.push(null);
+				tx = r0 * Math.cos(ac); ty = r0 * Math.sin(ac);
+			}
+			if (cut) {
+				tips.x.push(tx); tips.y.push(ty);
+				tips.color.push(edgeColor === YELLOW ? YELLOW : edgeColor);
+				tips.customdata.push(cur.id);
+				if (cur._isLeaf) tips.text.push(_makeHover(cur));
+				else { const fo = cur._firstOrder; tips.text.push(`${ORDER_KOR_MAP[fo] || fo || ''} 계통`); }
+			}
+		};
+
+		masterData.forEach(d => {
+			const isLeaf = d._isLeaf;
+			const isFocus = highlightedNodeId === d.id;
+			const coords = getCoord(d, currentMode);
+
+			if (isFocus && (T === null || d.absAge >= T)) { highlighted.x.push(coords.x); highlighted.y.push(coords.y); highlighted.text.push(_makeHover(d)); highlighted.customdata.push(d.id); }
+			if (d.id === polarisId) { polaris.x.push(coords.x); polaris.y.push(coords.y); polaris.text.push(_makeHover(d)); polaris.customdata.push(d.id); }
+			if (!isLeaf) return;
+
+			if (isKorea && !d.ko) return;
+			const isObserved = isMybird ? !!d._isObs : true;
+			const isSearched = searchSet.has(d._idStr);
+			const c = getPhyloColor(d.o);
+			if ((isMybird && !isObserved) || (isSearching && !isSearched)) {
+				if (T === null) { backdrop.x.push(coords.x); backdrop.y.push(coords.y); }
+				return;
+			}
+			if (T === null) {
+				extants.x.push(coords.x); extants.y.push(coords.y);
+				extants.text.push(_makeHover(d)); extants.color.push(c); extants.opacity.push(1.0);
+				extants.size.push(isSearching ? baseSize * 2.5 : baseSize); extants.customdata.push(d.id);
+				if (isSearching && isSearched) { searchLabels.x.push(coords.x); searchLabels.y.push(coords.y); searchLabels.text.push(d.ko || d.n); }
+			}
+			// 분지선: 잎에서 루트까지, 이미 그린 간선을 만나면 중단 (이후 조상 간선은 모두 처리됨)
+			let cur = d;
+			while (cur && treeMap[cur.p]) {
+				const edgeId = cur.id + '-' + cur.p;
+				if (edgesDrawn.has(edgeId)) break;
+				edgesDrawn.add(edgeId);
+				const p = treeMap[cur.p];
+				if (T === null || p.absAge >= T) pushEdge(cur, p);
+				if (cur.p === polarisId) break;
+				cur = p;
+			}
+		});
+		tsLineageCount = tips.x.length;
+
+		if (isSearching && currentGlobalMrcaId && treeMap[currentGlobalMrcaId] && currentGlobalMrcaId !== polarisId) {
+			const m = treeMap[currentGlobalMrcaId];
+			if (T === null || m.absAge >= T) {
+				const mc = getCoord(m, currentMode);
+				mrcaMarker.x.push(mc.x); mrcaMarker.y.push(mc.y);
+				mrcaMarker.text.push(`최근공통조상 (${formatKoreanAge(m.absAge)} 전)`);
+				mrcaMarker.customdata.push(m.id);
+			}
+		}
+
+		// [V13] 시간 눈금을 눌렀을 때 그 분기 지점을 표시
+		const tsMarkTrace = {x:[], y:[], text:[]};
+		if (tsEnabled && tsMark) {
+			const _mk = {};
+			tsMark.forEach(mk => {
+				const mn = treeMap[mk.id];
+				if (!mn || (T !== null && mn.absAge < T)) return;
+				if (!_mk[mk.id]) _mk[mk.id] = [];
+				if (!_mk[mk.id].includes(mk.label)) _mk[mk.id].push(mk.label);
+			});
+			Object.keys(_mk).forEach(id => {
+				const mc = getCoord(treeMap[id], currentMode);
+				const labs = _mk[id];
+				tsMarkTrace.x.push(mc.x); tsMarkTrace.y.push(mc.y);
+				tsMarkTrace.text.push(labs.length > 3 ? labs.slice(0, 3).join(' / ') + ' 외 ' + (labs.length - 3) : labs.join(' / '));
+			});
+		}
+
+		// 축 고정용 투명 트레이스: 시간 게이트로 그려지는 범위가 바뀌어도 화면이 흔들리지 않게 함
+		const bounds = isPizza ? { x: [-115, 115], y: [-115, 115] } : { x: [-105, 105], y: [-3, 120] };
+		currentTraces.push({ type: 'scattergl', mode: 'markers', x: bounds.x, y: bounds.y, marker: { size: 1, opacity: 0 }, hoverinfo: 'skip' });
+
+		Object.keys(orderLines).forEach(color => {
+			if (!orderLines[color].x.length) return;
+			currentTraces.push({
+				type: 'scattergl', mode: 'lines',
+				x: orderLines[color].x, y: orderLines[color].y,
+				line: { color: color, width: (color === YELLOW) ? 2 : 1 },
+				hoverinfo: 'skip'
+			});
+		});
+		if (backdrop.x.length) currentTraces.push({
+			type: 'scattergl', mode: 'markers', x: backdrop.x, y: backdrop.y,
+			marker: { size: baseSize, color: '#555', opacity: 0.15, line: {width: 0} }, hoverinfo: 'skip'
+		});
+		if (extants.x.length) currentTraces.push({ type: 'scattergl', mode: 'markers', x: extants.x, y: extants.y, text: extants.text, customdata: extants.customdata, marker:{ size: extants.size, color: extants.color, opacity: extants.opacity, line:{color:'#FFF', width:0.4}}, hoverinfo:'text' });
+		if (tips.x.length) currentTraces.push({ type: 'scattergl', mode: 'markers', x: tips.x, y: tips.y, text: tips.text, customdata: tips.customdata, marker:{ size: 5, color: tips.color, opacity: 1.0, line:{color:'#FFF', width:0.4}}, hoverinfo:'text' });
+		if (searchLabels.x.length) currentTraces.push({
+			type: 'scattergl', mode: 'text', x: searchLabels.x, y: searchLabels.y,
+			text: searchLabels.text, textposition: 'top center',
+			textfont: {color: '#FFFFFF', size: 10, weight: 'bold'}, hoverinfo: 'skip'
+		});
+		if (polaris.x.length) currentTraces.push({ type: 'scattergl', mode: 'markers', x: polaris.x, y: polaris.y, text: polaris.text, customdata: polaris.customdata, marker:{size: 15, color:'#FFF', opacity:1.0, line:{color:'#00FFFF', width:3}}, hoverinfo:'text' });
+		if (mrcaMarker.x.length) currentTraces.push({ type: 'scattergl', mode: 'markers', x: mrcaMarker.x, y: mrcaMarker.y, text: mrcaMarker.text, customdata: mrcaMarker.customdata, marker:{size: 16, color: '#FFD700', symbol: 'diamond', line:{color:'#FFF', width:2}}, hoverinfo:'text' });
+		if (tsMarkTrace.x.length) currentTraces.push({ type: 'scattergl', mode: 'markers+text', x: tsMarkTrace.x, y: tsMarkTrace.y, text: tsMarkTrace.text, textposition: 'top right', textfont: {color: '#FFFFFF', size: 13}, marker: {size: 18, color: 'rgba(0,0,0,0)', symbol: 'circle-open', line: {color: '#FFFFFF', width: 2}}, hoverinfo: 'skip' });
+		if (highlighted.x.length) currentTraces.push({ type: 'scattergl', mode: 'markers', x: highlighted.x, y: highlighted.y, text: highlighted.text, customdata: highlighted.customdata, marker:{size: baseSize * 3, color: '#CCFF00', opacity:1.0, line:{color:'#FFF', width: 2}}, hoverinfo:'text' });
+
+		const layout = {
+			uirevision: currentMode, paper_bgcolor: '#010101', plot_bgcolor: '#010101',
+			margin: {l: 0, r: 0, b: 0, t: 0}, showlegend: false, hovermode: 'closest', hoverdistance: -1,
+			xaxis: { visible: false, scaleanchor: 'y', scaleratio: 1 }, yaxis: { visible: false }, dragmode: 'pan'
+		};
+		if (isFirstRenderInMode) { Plotly.newPlot('plot', currentTraces, layout, PLOT_CONFIG); setupInteraction(); }
+		else Plotly.react('plot', currentTraces, layout, PLOT_CONFIG);
+		isFirstRenderInMode = false;
+		if (T !== null) tsUpdateLabel();
+	}
+
+	async function switchMode(m) {
+		const loader = document.getElementById('loading-overlay'); loader.style.display = 'flex'; loader.style.opacity = '1';
+		await new Promise(r => setTimeout(r, 50)); Plotly.purge('plot');
+		currentMode = m; isFirstRenderInMode = true; highlightedNodeId = null;
+		document.querySelectorAll('.mode-btn').forEach(b => { if (b.id !== 'btn-ts') b.classList.toggle('active', b.id === `btn-${m}`); });
+		updateTable(); renderPlot(); loader.style.opacity = '0'; setTimeout(() => loader.style.display = 'none', 300);
+	}
+
+
+	function parseCSVRow(str) {
+		// [V12] "" (이스케이프된 따옴표) 처리 추가
+		let res = [], inQ = false, cur = '';
+		for (let i=0; i<str.length; i++) {
+			let c = str[i];
+			if (c === '"') {
+				if (inQ && str[i+1] === '"') { cur += '"'; i++; } // 이중 따옴표 → 리터럴 "
+				else inQ = !inQ;
+			}
+			else if (c === ',' && !inQ) { res.push(cur); cur = ''; }
+			else cur += c;
+		}
+		res.push(cur); return res;
+	}
+
+	// [V12.22] _isObs 마스크 일괄 재계산. myBirdSet 변경 후 호출.
+	//   렌더 루프에서 myBirdSet.has(d._sN)를 매번 호출하는 대신 d._isObs 속성 조회로 대체해
+	//   3D 모드 mybird 토글 비용의 JS 쪽 부담을 줄인다.
+	function refreshIsObsMask() {
+		if (!masterData || !masterData.length) return;
+		for (let i = 0; i < masterData.length; i++) {
+			const d = masterData[i];
+			if (d._isLeaf) d._isObs = myBirdSet.has(d._sN);
+		}
+	}
+
+	function handleCsvUpload(event) {
+		const file = event.target.files[0]; if(!file) return;
+		const loader = document.getElementById('loading-overlay');
+		const text = document.getElementById('loading-text');
+		text.innerText = "eBird 관찰 기록 정제 및 동기화 중...";
+		loader.style.display = 'flex'; loader.style.opacity = '1';
+
+		const reader = new FileReader();
+		reader.onload = function(e) {
+			const lines = e.target.result.split('\n');
+			if(lines.length > 0) {
+				const header = parseCSVRow(lines[0]);
+				let sciIdx = header.findIndex(h => h.replace(/"/g,'').trim() === 'Scientific Name');
+
+				if(sciIdx !== -1) {
+					myBirdSet.clear();
+					const norm = (s) => (s||"").toLowerCase().replace(/[\s_]/g, "");
+					for(let i=1; i<lines.length; i++) {
+						if(!lines[i].trim()) continue;
+						const row = parseCSVRow(lines[i]);
+						if(row.length > sciIdx) {
+							let rawName = row[sciIdx].replace(/"/g,'').trim();
+							if(!rawName) continue;
+							if(rawName.includes(' sp.') || rawName.includes(' x ') || rawName.includes('(hybrid)')) continue;
+							let parts = rawName.split(' ');
+							if(parts.length >= 2) myBirdSet.add(norm(parts[0] + " " + parts[1]));
+							else if(parts.length === 1) myBirdSet.add(norm(parts[0]));
+						}
+					}
+					localStorage.setItem('myBirdList', JSON.stringify([...myBirdSet]));
+					refreshIsObsMask();
+					setRegion('mybird');
+					alert(`총 ${myBirdSet.size}종의 순수 관찰 기록이 성공적으로 연동되었습니다.`);
+				} else { alert("오류: CSV 파일에서 'Scientific Name' 열을 찾을 수 없습니다."); }
+			}
+			loader.style.opacity = '0'; setTimeout(() => loader.style.display = 'none', 300);
+			event.target.value = '';
+		};
+		reader.readAsText(file);
+	}
+
+	function setRegion(r) {
+		if(r === 'mybird' && myBirdSet.size === 0) {
+			alert("저장된 관찰 기록이 없습니다. 우측 📥 버튼을 눌러 eBird MyEBirdData.csv 파일을 업로드해주세요."); return;
+		}
+		if(currentRegion === 'mybird' && r === 'mybird') { document.getElementById('sch').value = ''; }
+		currentRegion=r;
+		document.querySelectorAll('.region-btn').forEach(b=>{ if(b.id) b.classList.toggle('active', b.id===`btn-${r}`) });
+
+		executeSearch();
+	}
+
+	function executeSearch() {
+		const raw = document.getElementById('sch').value.trim();
+		let matched = []; const norm = (s) => (s || "").toLowerCase().replace(/[\s_]/g, "");
+
+		if (!raw) {
+			if (currentRegion === 'mybird') {
+				// [V12.22] myBirdSet.has → d._isObs
+				masterData.forEach(d => {
+					if(!d._isLeaf) return;
+					if(d._isObs) matched.push({...d});
+				});
+			} else { resetSearchLogic(); return; }
+		} else {
+			try {
+				const queries = raw.split(',').map(p => p.trim());
+				let currentPrefix = "";
+				queries.forEach(q => {
+					let val = q; if(q.includes(':')) { const parts = q.split(':'); currentPrefix = parts[0].trim().toLowerCase(); val = parts.slice(1).join(':').trim(); }
+					const targetVal = norm(val);
+					masterData.forEach(d => {
+						if(!d._isLeaf) return;
+						if(currentRegion === 'korea' && !d.ko) return;
+						if(currentRegion === 'mybird' && !d._isObs) return;
+
+						let isMatch = false; const pref = currentPrefix;
+						if(pref === '목' || pref === 'order') { isMatch = d._sO.includes(targetVal) || d._sOko.includes(targetVal); }
+						else if(pref === '과' || pref === 'family') { isMatch = window.tsExactFamily ? (d.f === window.tsExactFamily) : (d._sF.includes(targetVal) || d._sFko.includes(targetVal)); }
+						else if(pref === '종' || pref === 'species') { isMatch = d._sKo === targetVal || d._sN === targetVal || d._sEn === targetVal; }
+						else { isMatch = d._sKo.includes(targetVal) || d._sN.includes(targetVal) || d._sEn.includes(targetVal); }
+						if(isMatch) matched.push({...d});
+					});
+				});
+			} catch (e) { resetSearchLogic(); return; }
+		}
+
+		const uniqueMatches = []; const seen = new Set();
+		matched.forEach(d => { if(!seen.has(d.id)) { seen.add(d.id); uniqueMatches.push(d); } });
+		currentTargets = uniqueMatches;
+		{
+			// [V13] "목:" / "order:" 단일 검색이고 결과가 한 목뿐이면 시간 슬라이더를 그 목 내부 눈금으로 전환
+			let fOrder = null, fFamily = null;
+			if (raw && !raw.includes(',')) {
+				if (/^(목|order)\s*:/i.test(raw)) {
+					const os = new Set(uniqueMatches.map(d => d.o));
+					if (os.size === 1) fOrder = [...os][0];
+				} else if (/^(과|family)\s*:/i.test(raw)) {
+					const fs = new Set(uniqueMatches.map(d => d.f));
+					const os = new Set(uniqueMatches.map(d => d.o));
+					if (fs.size === 1 && os.size === 1 && uniqueMatches.length >= 2) { fFamily = [...fs][0]; fOrder = [...os][0]; }
+				}
+			}
+			tsSetFocus(fOrder, fFamily);
+		}
+
+		if(currentTargets.length) {
+			currentGlobalMrcaId = findMRCA(currentTargets.map(t=>t.id), treeMap);
+			currentReferenceId = currentTargets[0]?.id;
+			document.getElementById('mrca-display').style.display='block';
+			document.getElementById('mrca-display').innerHTML=`<strong>최근공통조상:</strong> 약 ${formatKoreanAge(treeMap[currentGlobalMrcaId]?.absAge || 0)} 전 분화`;
+			document.getElementById('analysis-window').style.display='block';
+			updateTable(); renderPlot();
+		} else resetSearchLogic();
+	}
+
+	function findMRCA(ids, tree) {
+		let paths = ids.map(id=>{ let p=[], curr=String(id); while(curr && tree[curr]){ p.unshift(curr); curr=tree[curr].p; } return p; });
+		if(!paths.length) return null; let mrca = paths[0][0];
+		for(let i=0; i<Math.min(...paths.map(p=>p.length)); i++) { if(paths.every(p=>p[i]===paths[0][i])) mrca=paths[0][i]; else break; }
+		return mrca;
+	}
+
+	function sortTable(col) { if(sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; } updateTable(); }
+
+	function getPhylogeneticDistance(idA, idB) {
+		if(idA === idB) return 0;
+		let pathA = [], currA = idA; while(currA && treeMap[currA]) { pathA.unshift(currA); currA = treeMap[currA].p; }
+		let pathB = [], currB = idB; while(currB && treeMap[currB]) { pathB.unshift(currB); currB = treeMap[currB].p; }
+		let mIdx = 0; while(mIdx < pathA.length && mIdx < pathB.length && pathA[mIdx] === pathB[mIdx]) mIdx++;
+		mIdx--; if(mIdx < 0) return 0;
+		return Math.abs(treeMap[idA].absAge - treeMap[pathA[mIdx]].absAge) + Math.abs(treeMap[idB].absAge - treeMap[pathA[mIdx]].absAge);
+	}
+
+	const MAX_TABLE_ROWS = 500; // [V12] 결과 폭주 시 DOM 프리즈 방지
+	function updateTable() {
+		if (!currentTargets.length) return;
+		const mrcaNode = treeMap[currentGlobalMrcaId], mrcaSteps = mrcaNode ? mrcaNode.steps : 0;
+		const ref = treeMap[currentReferenceId] || currentTargets[0];
+		const refName = ref.n;
+		let data = currentTargets.map(s => {
+			const kinship = window.__kinLabel__ ? window.__kinLabel__(refName, s.n) : '';
+			return {
+				...s,
+				kn: (s.ko || s.n),
+				relSteps: s.steps - mrcaSteps,
+				divergenceAge: s.absAge > 0 ? s.absAge : (treeMap[s.p]?.absAge || 0),
+				phyloDist: getPhylogeneticDistance(s.id, ref.id),
+				kinship,
+				kinRank: window.__kinRank__ ? window.__kinRank__(kinship) : 99,
+			};
+		});
+		data.sort((a,b)=>{ if(a.id === currentReferenceId) return -1; if(b.id === currentReferenceId) return 1; let v1 = a[sortCol], v2 = b[sortCol]; return sortAsc ? (v1 > v2 ? 1 : -1) : (v1 < v2 ? 1 : -1); });
+		const totalRows = data.length;
+		const truncated = totalRows > MAX_TABLE_ROWS;
+		if (truncated) data = data.slice(0, MAX_TABLE_ROWS);
+		const notice = truncated ? `<tr><td colspan="5" style="text-align:center; color:#FFD700; padding:6px;">총 ${totalRows.toLocaleString()}종 중 상위 ${MAX_TABLE_ROWS}개만 표시 (정렬 기준 바꾸면 다른 상위권이 보임)</td></tr>` : '';
+		document.getElementById('resBody').innerHTML = notice + data.map(d => {
+			const ebCode = d.ebird_code || d.ebird || "";
+			const eLink = ebCode ? `<a href="https://ebird.org/species/${ebCode}" target="_blank" class="ebird-link" title="eBird에서 보기">🔗</a>` : "";
+			return `<tr style="${d.id===currentReferenceId?'background:rgba(0,122,255,0.2);':''}" onclick="currentReferenceId='${d.id}'; updateTable();">
+				<td style="text-align:left;">${d.kn}${eLink}</td><td>${d.relSteps}</td><td>${formatKoreanAge(d.divergenceAge)}</td><td>${d.phyloDist.toFixed(1)}</td><td>${d.kinship || ''}</td>
+			</tr>`;
+		}).join('');
+	}
+
+	function resetSearchLogic() { document.getElementById('sch').value=''; currentTargets=[]; highlightedNodeId=null; tsSetFocus(null); document.getElementById('mrca-display').style.display='none'; document.getElementById('analysis-window').style.display='none'; renderPlot(); }
+	initApp();
+</script>
+
+<!-- [KINSHIP] 촌수(친족도) 라벨 추가. 상대 거리(phyloDist)는 유지, 옆에 촌수 컬럼을 덧붙임. -->
+<script type="module">
+	import { buildKinshipContext, kinshipLabel, RANK } from './kinship.js';
+	const interOrderAges = await (await fetch('./inter_order_ages.json')).json();
+	// treeMap이 initApp에서 채워질 때까지 대기
+	while (!Object.keys(window.treeMap || treeMap).length) {
+		await new Promise(r => setTimeout(r, 50));
+	}
+	const _ctx = buildKinshipContext(treeMap, interOrderAges);
+	window.__kinCtx__   = _ctx;
+	window.__kinLabel__ = (aName, bName) => kinshipLabel(aName, bName, _ctx);
+	window.__kinRank__  = (label) => RANK[label] ?? 99;
+	// 컨텍스트 준비 직후 테이블이 이미 렌더돼 있다면 재렌더
+	try { if (typeof updateTable === 'function' && currentTargets?.length) updateTable(); } catch(e) {}
+</script>
+</body>
+</html>
