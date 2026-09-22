@@ -243,7 +243,9 @@
 	<h3>사용 방법</h3>
 	<h4>기본 검색</h4>
 	<ul>
-		<li>검색창에 이름을 입력하고 <b>Enter</b>. 한글 이름, 영어 이름, 학명 어느 것이든 되고, 일부만 써도 찾습니다 (예: <code>참새</code>, <code>sparrow</code>, <code>Passer</code>). 대소문자, 띄어쓰기, 밑줄은 무시됩니다.</li>
+		<li>검색창에 이름을 입력하고 <b>Enter</b>. 한글 이름, 영어 이름, 학명 어느 것이든 되고, 대소문자·띄어쓰기·밑줄은 무시됩니다.</li>
+		<li>입력한 이름과 <b>정확히 일치하는 종</b>이 있으면 그 종만 나옵니다 (예: <code>참새</code> → 참새 1종만). 정확히 일치하는 종이 없으면 그 글자가 포함된 종을 모두 보여줍니다 (예: <code>sparrow</code>, <code>Passer</code>).</li>
+		<li>이름이 정확히 일치해도 포함된 종을 <b>모두</b> 보고 싶으면 따옴표로 감싸세요: <code>'참새'</code> 또는 <code>"참새"</code> → 참새, 섬참새, 집참새, 꼬까참새 등 이름에 "참새"가 들어간 모든 종.</li>
 	</ul>
 	<h4>접두어로 범위 지정</h4>
 	<ul>
@@ -1263,20 +1265,36 @@
 				const queries = raw.split(',').map(p => p.trim());
 				let currentPrefix = "";
 				queries.forEach(q => {
-					let val = q; if(q.includes(':')) { const parts = q.split(':'); currentPrefix = parts[0].trim().toLowerCase(); val = parts.slice(1).join(':').trim(); }
+					// [V13] 검색어를 따옴표('..' 또는 "..")로 감싸면 그 글자가 포함된 모든 종을 보여준다 (부분 검색 강제).
+					let raw2 = q; let forceContains = false;
+					if (raw2.length >= 2) {
+						const qc = raw2[0], qe = raw2[raw2.length - 1];
+						const quotePairs = { '"': '"', "'": "'", '“': '”', '‘': '’' };
+						if (quotePairs[qc] && qe === quotePairs[qc]) { forceContains = true; raw2 = raw2.slice(1, -1).trim(); }
+					}
+					let val = raw2; if(raw2.includes(':')) { const parts = raw2.split(':'); currentPrefix = parts[0].trim().toLowerCase(); val = parts.slice(1).join(':').trim(); }
 					const targetVal = norm(val);
+					const pref = currentPrefix;
+					let qMatched = [];
 					masterData.forEach(d => {
 						if(!d._isLeaf) return;
 						if(currentRegion === 'korea' && !d.ko) return;
 						if(currentRegion === 'mybird' && !d._isObs) return;
 
-						let isMatch = false; const pref = currentPrefix;
+						let isMatch = false;
 						if(pref === '목' || pref === 'order') { isMatch = d._sO.includes(targetVal) || d._sOko.includes(targetVal); }
 						else if(pref === '과' || pref === 'family') { isMatch = window.tsExactFamily ? (d.f === window.tsExactFamily) : (d._sF.includes(targetVal) || d._sFko.includes(targetVal)); }
 						else if(pref === '종' || pref === 'species') { isMatch = d._sKo === targetVal || d._sN === targetVal || d._sEn === targetVal; }
 						else { isMatch = d._sKo.includes(targetVal) || d._sN.includes(targetVal) || d._sEn.includes(targetVal); }
-						if(isMatch) matched.push({...d});
+						if(isMatch) qMatched.push(d);
 					});
+					// [V13] 접두어 없는 기본 검색: 이름이 정확히 일치하는 종이 있으면 그 종만 남긴다.
+					// (예: "참새" -> 참새만. 따옴표로 감싸면(예: '참새') "참새"가 포함된 모든 종을 보여준다.)
+					if (!pref && !forceContains) {
+						const exact = qMatched.filter(d => d._sKo === targetVal || d._sN === targetVal || d._sEn === targetVal);
+						if (exact.length) qMatched = exact;
+					}
+					matched.push(...qMatched);
 				});
 			} catch (e) { resetSearchLogic(); return; }
 		}
