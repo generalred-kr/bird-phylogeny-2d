@@ -173,6 +173,19 @@
 		.ts-tick.ts-tick-maj .ts-tick-mark { width: 3px; height: 16px; background: #ff9f0a; opacity: 0.95; }
 		#ts-popup-list { max-height: 200px; overflow-y: auto; }
 		#ts-popup-act { display: none; margin: 8px 0 0 0; width: 100%; flex: none; }
+		#ebird-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(620px, 92vw); max-height: 84vh; overflow-y: auto; background: rgba(12,12,12,0.98); border: 1px solid #444; border-radius: 12px; padding: 20px 24px; z-index: 3000; box-shadow: 0 12px 50px rgba(0,0,0,0.9); font-size: 13px; line-height: 1.5; color: #ddd; }
+		#ebird-modal h3 { margin: 0 0 4px 0; font-size: 16px; color: #FFD700; }
+		#ebird-modal h4 { margin: 16px 0 8px 0; font-size: 14px; color: #5ac8fa; }
+		#ebird-modal .help-close { position: absolute; top: 10px; right: 14px; cursor: pointer; color: #888; font-size: 16px; }
+		#ebird-modal .eb-note { color: #888; font-size: 12px; margin: 0 0 10px 0; }
+		.eb-item { border-top: 1px solid #333; padding: 8px 0; }
+		.eb-item:first-child { border-top: none; }
+		.eb-item-title { color: #fff; font-weight: bold; }
+		.eb-item-sci { color: #888; font-weight: normal; font-style: italic; }
+		.eb-item-sub { color: #aaa; font-size: 12px; margin: 2px 0 4px 0; }
+		.eb-item-link { color: #5ac8fa; text-decoration: none; margin-right: 14px; font-size: 12px; }
+		.eb-item-link:hover { text-decoration: underline; }
+		.eb-empty { color: #888; padding: 6px 0; }
 
 	</style>
 </head>
@@ -196,6 +209,7 @@
 		<button onclick="switchMode('pizza')" id="btn-pizza" class="mode-btn active">원형 (2D)</button>
 		<button onclick="switchMode('tree')" id="btn-tree" class="mode-btn">나무 (2D)</button>
 		<button onclick="tsToggle()" id="btn-ts" class="mode-btn" title="시간 슬라이더">⏱ 시간</button>
+		<button onclick="toggleEbird(true)" id="btn-ebird" class="mode-btn" title="탐조 소식">📍 탐조소식</button>
 	</div>
 	<div id="mrca-display" class="mrca-box"></div>
 	
@@ -289,6 +303,18 @@
 	</ul>
 </div>
 
+
+<!-- [V13] eBird 연동: 핫스팟 소개 / 지역 희귀종 소식 -->
+<div id="ebird-modal">
+	<div class="help-close" onclick="toggleEbird(false)">✖</div>
+	<h3>탐조 소식</h3>
+	<p class="eb-note">eBird 관찰 기록을 바탕으로 합니다. 길찾기는 네이버 지도로 연결됩니다.</p>
+	<h4>전국 희귀종 소식 (최근 30일)</h4>
+	<div id="eb-notable-list"></div>
+	<h4>우리나라 핫스팟 (관찰 종 수 상위)</h4>
+	<div id="eb-hotspot-list"></div>
+</div>
+
 <script>
 	const ORDER_KOR_MAP = {"Accipitriformes":"수리목","Anseriformes":"기러기목","Apodiformes":"칼새목","Caprimulgiformes":"쏙독새목","Charadriiformes":"도요목","Ciconiiformes":"황새목","Columbiformes":"비둘기목","Coraciiformes":"파랑새목","Cuculiformes":"두견이목","Falconiformes":"매목","Galliformes":"닭목","Gaviiformes":"아비목","Gruiformes":"두루미목","Passeriformes":"참새목","Pelecaniformes":"사다새목","Piciformes":"딱따구리목","Podicipediformes":"논병아리목","Procellariiformes":"슴새목","Strigiformes":"올빼미목","Suliformes":"얼가니새목","Otidiformes":"느시목","Struthioniformes":"타조목","Rheiformes":"레아목","Casuariiformes":"화식조목","Apterygiformes":"키위목","Tinamiformes":"티나무목","Phoenicopteriformes":"홍학목","Mesitornithiformes":"메사이트목","Pterocliformes":"사막꿩목","Musophagiformes":"투라코목","Steatornithiformes":"기름쏙독새목","Nyctibiiformes":"포투새목","Podargiformes":"프로그마우스목","Aegotheliformes":"올빼미쏙독새목","Opisthocomiformes":"호아친목","Eurypygiformes":"태양새목","Phaethontiformes":"열대새목","Sphenisciformes":"펭귄목","Cathartiformes":"콘도르목","Coliiformes":"쥐새목","Leptosomiformes":"쿠쿠롤러목","Trogoniformes":"비단날개새목","Bucerotiformes":"코뿔새목","Cariamiformes":"세리에마목","Psittaciformes":"앵무새목"};
 	const PHYLO_SORTED_ORDERS = ["Struthioniformes","Rheiformes","Casuariiformes","Apterygiformes","Tinamiformes","Galliformes","Anseriformes","Phoenicopteriformes","Podicipediformes","Columbiformes","Mesitornithiformes","Pterocliformes","Otidiformes","Musophagiformes","Cuculiformes","Caprimulgiformes","Steatornithiformes","Nyctibiiformes","Podargiformes","Aegotheliformes","Apodiformes","Opisthocomiformes","Gruiformes","Charadriiformes","Eurypygiformes","Phaethontiformes","Gaviiformes","Sphenisciformes","Procellariiformes","Ciconiiformes","Suliformes","Pelecaniformes","Cathartiformes","Accipitriformes","Strigiformes","Coliiformes","Leptosomiformes","Trogoniformes","Bucerotiformes","Coraciiformes","Piciformes","Cariamiformes","Falconiformes","Psittaciformes","Passeriformes"];
@@ -368,7 +394,7 @@
 
 	async function initApp() {
 		try {
-			const r = await fetch('Metadata_2D.json?v=13.0');
+			const r = await fetch('Unified_Fractal_Metadata.json?v=13.0');
 			const data = await r.json();
 			// [V12.8] 단일 패스로 병합: treeMap / _isLeaf / leaves / childrenOf / polarisId 를 한 번에 수집.
 			//         기존엔 map→forEach→find→filter→forEach 로 5차례 전체 스캔.
@@ -1169,6 +1195,82 @@
 		updateTable(); renderPlot(); loader.style.opacity = '0'; setTimeout(() => loader.style.display = 'none', 300);
 	}
 
+
+
+	// [V13] eBird 연동: 우리나라 핫스팟 소개, 지정 지역 희귀종 소식.
+	const EBIRD_API = 'https://birdmap.redfeather.me/api/ebird';
+	const EBIRD_NOTABLE_REGION = 'KR'; // 전국. 특정 지역만 보고 싶으면 예: '전북'으로 바꾼다.
+	let ebirdLoaded = false;
+
+	function toggleEbird(show) {
+		const el = document.getElementById('ebird-modal');
+		if (!el) return;
+		el.style.display = show ? 'block' : 'none';
+		if (show && !ebirdLoaded) { ebirdLoaded = true; loadEbirdData(); }
+	}
+
+	function _ebEsc(s) {
+		return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+	}
+
+	function _ebNorm(s) { return (s || '').toLowerCase().replace(/[\s_]/g, ''); }
+
+	// eBird 학명으로 우리 데이터의 한글 이름을 찾는다. 없으면 null.
+	function ebKoreanName(sciName) {
+		if (!sciName || !masterData || !masterData.length) return null;
+		const target = _ebNorm(sciName);
+		const hit = masterData.find(d => d._isLeaf && d.n && _ebNorm(d.n) === target);
+		return (hit && hit.ko) ? hit.ko : null;
+	}
+
+	async function loadEbirdData() {
+		const nEl = document.getElementById('eb-notable-list');
+		const hEl = document.getElementById('eb-hotspot-list');
+		nEl.textContent = '불러오는 중...'; hEl.textContent = '불러오는 중...';
+		try {
+			const nRes = await fetch(`${EBIRD_API}/notable?region=${encodeURIComponent(EBIRD_NOTABLE_REGION)}&back=30`).then(r => r.json());
+			renderEbNotable(nRes);
+		} catch (e) { nEl.textContent = '희귀종 소식을 불러오지 못했습니다.'; }
+		try {
+			const hRes = await fetch(`${EBIRD_API}/hotspots?limit=20`).then(r => r.json());
+			renderEbHotspots(hRes);
+		} catch (e) { hEl.textContent = '핫스팟 정보를 불러오지 못했습니다.'; }
+	}
+
+	function renderEbHotspots(res) {
+		const el = document.getElementById('eb-hotspot-list');
+		if (!res || !res.hotspots || !res.hotspots.length) { el.innerHTML = '<div class="eb-empty">데이터가 없습니다.</div>'; return; }
+		el.innerHTML = res.hotspots.map((h, i) => `
+			<div class="eb-item">
+				<div class="eb-item-title">${i + 1}. ${_ebEsc(h.name)}</div>
+				<div class="eb-item-sub">지금까지 ${h.numSpeciesAllTime ?? '-'}종 관찰 · 최근 관찰 ${_ebEsc(h.latestObsDt) || '-'}</div>
+				<a class="eb-item-link" href="${h.mapLink}" target="_blank" rel="noopener">지도에서 보기</a>
+			</div>`).join('');
+	}
+
+	function renderEbNotable(res) {
+		const el = document.getElementById('eb-notable-list');
+		if (!res || res.error) { el.innerHTML = `<div class="eb-empty">${_ebEsc((res && res.error) || '데이터가 없습니다.')}</div>`; return; }
+		if (!res.notable || !res.notable.length) { el.innerHTML = '<div class="eb-empty">최근 30일 안에 보고된 희귀종 소식이 없습니다.</div>'; return; }
+		el.innerHTML = res.notable.map(o => {
+			const koName = ebKoreanName(o.sciName);
+			const displayName = koName || o.comName || o.sciName;
+			return `
+			<div class="eb-item">
+				<div class="eb-item-title">${_ebEsc(displayName)} <span class="eb-item-sci">(${_ebEsc(o.sciName)})</span></div>
+				<div class="eb-item-sub">${_ebEsc(o.locName)} · ${_ebEsc(o.obsDt)}${o.howMany ? ' · ' + o.howMany + '개체' : ''}</div>
+				<a class="eb-item-link" href="#" onclick="ebSearchSpecies('${_ebEsc(o.sciName).replace(/'/g, "\\'")}');return false;">계통도에서 보기</a>
+				<a class="eb-item-link" href="${o.mapLink}" target="_blank" rel="noopener">지도에서 보기</a>
+			</div>`;
+		}).join('');
+	}
+
+	function ebSearchSpecies(sciName) {
+		if (!sciName) return;
+		toggleEbird(false);
+		document.getElementById('sch').value = '종:' + sciName;
+		executeSearch();
+	}
 
 	function parseCSVRow(str) {
 		// [V12] "" (이스케이프된 따옴표) 처리 추가
