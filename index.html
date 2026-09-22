@@ -394,7 +394,7 @@
 
 	async function initApp() {
 		try {
-			const r = await fetch('Unified_Fractal_Metadata.json?v=13.0');
+			const r = await fetch('Metadata_2D.json?v=13.0');
 			const data = await r.json();
 			// [V12.8] 단일 패스로 병합: treeMap / _isLeaf / leaves / childrenOf / polarisId 를 한 번에 수집.
 			//         기존엔 map→forEach→find→filter→forEach 로 5차례 전체 스캔.
