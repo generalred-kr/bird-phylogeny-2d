@@ -1244,7 +1244,7 @@
 			<div class="eb-item">
 				<div class="eb-item-title">${i + 1}. ${_ebEsc(h.name)}</div>
 				<div class="eb-item-sub">지금까지 ${h.numSpeciesAllTime ?? '-'}종 관찰 · 최근 관찰 ${_ebEsc(h.latestObsDt) || '-'}</div>
-				<a class="eb-item-link" href="${h.mapLink}" target="_blank" rel="noopener">지도에서 보기</a>
+				<a class="eb-item-link" href="#" onclick="ebOpenMap(${h.lat}, ${h.lng}, '${_ebEsc(h.name).replace(/'/g, "\\'")}');return false;">지도에서 보기</a>
 			</div>`).join('');
 	}
 
@@ -1260,9 +1260,24 @@
 				<div class="eb-item-title">${_ebEsc(displayName)} <span class="eb-item-sci">(${_ebEsc(o.sciName)})</span></div>
 				<div class="eb-item-sub">${_ebEsc(o.locName)} · ${_ebEsc(o.obsDt)}${o.howMany ? ' · ' + o.howMany + '개체' : ''}</div>
 				<a class="eb-item-link" href="#" onclick="ebSearchSpecies('${_ebEsc(o.sciName).replace(/'/g, "\\'")}');return false;">계통도에서 보기</a>
-				<a class="eb-item-link" href="${o.mapLink}" target="_blank" rel="noopener">지도에서 보기</a>
+				<a class="eb-item-link" href="#" onclick="ebOpenMap(${o.lat}, ${o.lng}, '${_ebEsc(o.locName).replace(/'/g, "\\'")}');return false;">지도에서 보기</a>
 			</div>`;
 		}).join('');
+	}
+
+	// PC에서는 웹 지도(map.naver.com)로, 모바일에서는 네이버 지도 앱(nmap://)을 먼저 시도하고
+	// 앱이 없으면 잠시 후 웹 지도로 대신 연다. 좌표는 원본 그대로 넘긴다(문제 생기면 반올림 추가).
+	function ebOpenMap(lat, lng, name) {
+		if (lat == null || lng == null) return;
+		const la = lat;
+		const lo = lng;
+		const web = `https://map.naver.com/p/search/${encodeURIComponent(la + ',' + lo)}`;
+		const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+		if (!isMobile) { window.open(web, '_blank'); return; }
+		const appUrl = `nmap://place?lat=${la}&lng=${lo}&name=${encodeURIComponent(name || '목적지')}&appname=redfeather.birdphylogeny`;
+		const t = setTimeout(() => { window.location.href = web; }, 1200);
+		window.addEventListener('pagehide', () => clearTimeout(t), { once: true });
+		window.location.href = appUrl;
 	}
 
 	function ebSearchSpecies(sciName) {
