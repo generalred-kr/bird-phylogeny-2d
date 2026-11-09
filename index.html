@@ -994,6 +994,26 @@
 	// korea_info.json은 따로 불러오며, 못 불러와도 계통수는 그대로 동작한다.
 	// ---------------------------------------------------------------------
 	let KOREA_INFO = null;
+	let WORLD_INFO = null, worldInfoPromise = null, koPopupNode = null;
+	// 세계 종 정보(IUCN·CITES·영문 분포·주변국 이름)는 용량이 커서, 한국 목록에 없는 종을 처음 클릭할 때 불러온다.
+	function ensureWorldInfo() {
+		if (WORLD_INFO) return Promise.resolve(WORLD_INFO);
+		if (!worldInfoPromise) {
+			worldInfoPromise = fetch('world_info.json?v=13.2').then(r => r.ok ? r.json() : null)
+				.then(j => { if (j) WORLD_INFO = j; else worldInfoPromise = null; return j; })
+				.catch(() => { worldInfoPromise = null; return null; });
+		}
+		return worldInfoPromise;
+	}
+	// "LC", "CR (PE)", "CR (PEW)" 같은 IUCN 표기를 한글로 바꾼다.
+	function koIucnText(code) {
+		const m = String(code).match(/^(\w+)\s*\((\w+)\)$/);
+		if (m) {
+			const sub = { PE: '절멸 추정', PEW: '야생절멸 추정' }[m[2]];
+			return (KO_IUCN[m[1]] || m[1]) + ' (' + m[1] + ')' + (sub ? ' · ' + sub : '');
+		}
+		return (KO_IUCN[code] || code) + ' (' + code + ')';
+	}
 	const KO_STATUS = { Res: '텃새', WV: '겨울철새', SV: '여름철새', PM: '나그네새', Vag: '미조' };
 	const KO_FREQ = { ab: '매우 흔함', c: '흔함', uc: '다소 드묾', sc: '드묾', r: '희귀' };
 	const KO_REGION = { N: '북한', S: '남부 지방', I: '도서 지역' };
@@ -1032,7 +1052,7 @@
 		return html ? `<div class="ko-sec"><div class="ko-h">${label}</div><div>${html}</div></div>` : '';
 	}
 
-	function koreaPopupHtml(d, info, koreaLoaded) {
+	function koreaPopupHtml(d, info, koreaLoaded, wstate, wentry) {
 		const ko = (info && info.ko) || d.ko || '';
 		const en = (info && info.en) || d.en || '';
 		const sci = (info && info.sci) || String(d.n || '').replace(/_/g, ' ');
@@ -1047,9 +1067,31 @@
 		h += `<div class="ko-tax">${_koEsc(order)}${family ? ' · ' + _koEsc(family) : ''}</div>`;
 
 		if (!info) {
-			h += _koRow('한국 기록', koreaLoaded
-				? '<span class="ko-muted">한국 목록에 없는 종입니다.</span>'
-				: '<span class="ko-muted">한국 정보를 불러오는 중이거나 불러오지 못했습니다.</span>');
+			if (koreaLoaded) h += '<div class="ko-muted">한국 목록에 없는 종입니다.</div>';
+			else h += _koRow('한국 기록', '<span class="ko-muted">한국 정보를 불러오는 중이거나 불러오지 못했습니다.</span>');
+			if (wstate === 'loading') {
+				h += _koRow('세계 정보', '<span class="ko-muted">불러오는 중...</span>');
+			} else if (!wentry) {
+				h += _koRow('세계 정보', '<span class="ko-muted">이 종의 세계 정보가 없습니다.</span>');
+			} else {
+				const wp = [];
+				if (wentry.iucn) wp.push(`<span class="ko-badge" style="background:#1a1f2a;border-color:#2a3a5a;color:#9ac;">IUCN ${_koEsc(koIucnText(wentry.iucn))}</span>`);
+				if (wentry.cites) wp.push(`<span class="ko-badge" style="background:#1a2a1f;border-color:#2a5a3a;color:#9c9;">CITES 부속서 ${_koEsc(wentry.cites)}</span>`);
+				h += _koRow('보호 등급', wp.join(''));
+				if (wentry.range_ko) h += _koRow('분포', _koText(wentry.range_ko));
+				else if (wentry.range_en) h += _koRow('분포 <span class="ko-muted">(영문 원문)</span>', _koText(wentry.range_en));
+				if (wentry.names) {
+					const nm = [];
+					KO_NEIGHBORS.forEach(([k, label]) => {
+						if (!wentry.names[k]) return;
+						let v = _koEsc(wentry.names[k]);
+						if (k === 'jp' && wentry.names.jp_r) v += ` <span class="ko-muted">(${_koEsc(wentry.names.jp_r)})</span>`;
+						nm.push(`<div><b>${label}</b> ${v}</div>`);
+					});
+					h += _koRow('주변국 이름', nm.join(''));
+				}
+				h += `<div class="ko-src">출처: AviList v2026 (${wentry.range_ko ? '분포는 기계 번역' : '분포는 영문 원문'})</div>`;
+			}
 			if (ebird) h += `<div class="ko-sec">${ebird}</div>`;
 			return h;
 		}
@@ -1064,7 +1106,7 @@
 
 		// 보호 등급
 		const prot = [];
-		if (info.iucn) prot.push(`<span class="ko-badge" style="background:#1a1f2a;border-color:#2a3a5a;color:#9ac;">IUCN ${_koEsc(KO_IUCN[info.iucn] || info.iucn)} (${_koEsc(info.iucn)})</span>`);
+		if (info.iucn) prot.push(`<span class="ko-badge" style="background:#1a1f2a;border-color:#2a3a5a;color:#9ac;">IUCN ${_koEsc(koIucnText(info.iucn))}</span>`);
 		if (info.endg) prot.push(`<span class="ko-badge">멸종위기 야생생물 ${_koEsc(info.endg)}급</span>`);
 		if (info.monument) prot.push(`<span class="ko-badge">천연기념물 제${_koEsc(info.monument)}호</span>`);
 		if (info.marine) prot.push(`<span class="ko-badge">해양보호생물</span>`);
@@ -1114,13 +1156,23 @@
 		const box = document.getElementById('korea-popup');
 		if (!box || !d) return;
 		const info = KOREA_INFO ? KOREA_INFO[d.n] : null;
-		document.getElementById('korea-popup-body').innerHTML = koreaPopupHtml(d, info, KOREA_INFO !== null);
+		koPopupNode = d;
+		const render = (wstate, wentry) => {
+			document.getElementById('korea-popup-body').innerHTML = koreaPopupHtml(d, info, KOREA_INFO !== null, wstate, wentry);
+		};
+		render(WORLD_INFO ? 'ready' : 'loading', WORLD_INFO ? WORLD_INFO[d.n] : null);
 		box.scrollTop = 0;
 		box.style.display = 'block';
+		if (!info && !WORLD_INFO) {
+			ensureWorldInfo().then(w => {
+				if (koPopupNode === d && box.style.display === 'block') render(w ? 'ready' : 'failed', w ? w[d.n] : null);
+			});
+		}
 	}
 	function hideKoreaPopup() {
 		const box = document.getElementById('korea-popup');
 		if (box) box.style.display = 'none';
+		koPopupNode = null;
 	}
 
 	function setupInteraction() {
@@ -1653,7 +1705,7 @@
 	function resetSearchLogic() { document.getElementById('sch').value=''; currentTargets=[]; highlightedNodeId=null; tsSetFocus(null); document.getElementById('mrca-display').style.display='none'; document.getElementById('analysis-window').style.display='none'; renderPlot(); }
 	initApp();
 	// [V13.1] 한국 조류 정보: 계통수와 별개로 불러오며, 실패해도 계통수에는 영향이 없다.
-	fetch('korea_info.json?v=13.1').then(r => r.ok ? r.json() : null).then(j => { if (j) KOREA_INFO = j; }).catch(() => {});
+	fetch('korea_info.json?v=13.1').then(r => r.ok ? r.json() : null).then(j => { if (j) { KOREA_INFO = j; const b = document.getElementById('korea-popup'); if (koPopupNode && b && b.style.display === 'block') showKoreaPopup(koPopupNode); } }).catch(() => {});
 </script>
 
 <!-- [KINSHIP] 촌수(친족도) 라벨 추가. 상대 거리(phyloDist)는 유지, 옆에 촌수 컬럼을 덧붙임. -->
