@@ -187,6 +187,24 @@
 		.eb-item-link:hover { text-decoration: underline; }
 		.eb-empty { color: #888; padding: 6px 0; }
 
+	
+		/* [V13.1] 한국 조류 정보 팝업 */
+		#korea-popup { display: none; position: fixed; right: 15px; top: calc(30vh + 40px); width: min(390px, 92vw); max-height: calc(70vh - 70px); overflow-y: auto; background: rgba(10,10,10,0.97); border: 1px solid #444; border-radius: 12px; padding: 16px 18px 14px 18px; z-index: 1500; font-size: 12.5px; line-height: 1.55; color: #ddd; box-shadow: 0 10px 40px rgba(0,0,0,0.85); }
+		#korea-popup .ko-close { position: absolute; top: 8px; right: 12px; cursor: pointer; color: #888; font-size: 15px; }
+		#korea-popup .ko-close:hover { color: #fff; }
+		#korea-popup .ko-title { font-size: 17px; font-weight: bold; color: #FFD700; margin-right: 22px; }
+		#korea-popup .ko-en { color: #ccc; font-size: 13px; }
+		#korea-popup .ko-sci { color: #9ad; font-style: italic; font-size: 12px; }
+		#korea-popup .ko-sci span { font-style: normal; color: #789; }
+		#korea-popup .ko-tax { color: #888; font-size: 11.5px; margin: 2px 0 8px 0; }
+		#korea-popup .ko-sec { margin-top: 9px; padding-top: 8px; border-top: 1px solid #262626; }
+		#korea-popup .ko-h { color: #5ac8fa; font-size: 11.5px; font-weight: bold; margin-bottom: 2px; }
+		#korea-popup .ko-badge { display: inline-block; background: #2a1a1a; border: 1px solid #6a2a2a; color: #ff9d9d; border-radius: 4px; padding: 0 6px; margin: 0 4px 3px 0; font-size: 11.5px; }
+		#korea-popup .ko-ssp { margin: 4px 0; padding-left: 8px; border-left: 2px solid #333; }
+		#korea-popup .ko-muted { color: #888; font-size: 11.5px; }
+		#korea-popup a { color: #5ac8fa; text-decoration: none; }
+		#korea-popup a:hover { text-decoration: underline; }
+		#korea-popup .ko-src { color: #666; font-size: 10.5px; margin-top: 10px; }
 	</style>
 </head>
 <body>
@@ -229,6 +247,7 @@
 
 <div id="legend-container"></div>
 <div id="plot"></div>
+<div id="korea-popup"><div class="ko-close" onclick="hideKoreaPopup()">✖</div><div id="korea-popup-body"></div></div>
 
 <!-- [V13] 2D 시간 슬라이더: 시점 T 에 존재하던 계통만 그린다. 목 선택 시 과·속·종 눈금으로 전환. -->
 <div id="ts-slider-container">
@@ -970,12 +989,148 @@
 		renderPlot();
 	}
 
+	// ---------------------------------------------------------------------
+	// [V13.1] 한국 조류 정보 팝업: 잎(종)을 클릭하면 korea_info.json의 내용을 보여 준다.
+	// korea_info.json은 따로 불러오며, 못 불러와도 계통수는 그대로 동작한다.
+	// ---------------------------------------------------------------------
+	let KOREA_INFO = null;
+	const KO_STATUS = { Res: '텃새', WV: '겨울철새', SV: '여름철새', PM: '나그네새', Vag: '미조' };
+	const KO_FREQ = { ab: '매우 흔함', c: '흔함', uc: '다소 드묾', sc: '드묾', r: '희귀' };
+	const KO_REGION = { N: '북한', S: '남부 지방', I: '도서 지역' };
+	const KO_IUCN = { LC: '최소관심', NT: '준위협', VU: '취약', EN: '위기', CR: '위급', DD: '정보부족', EX: '절멸', EW: '야생절멸', NE: '미평가' };
+	const KO_NEIGHBORS = [['cn', '중국'], ['tw', '대만'], ['hk', '홍콩'], ['jp', '일본'], ['mn', '몽골'], ['ru', '러시아']];
+
+	function _koEsc(s) {
+		return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+	}
+	function _koText(s) { return _koEsc(s).replace(/\n/g, '<br>'); }
+
+	// "Res/c", "WV/r N", "PM/uc SV/sc", "SV/scN", "Probably extinct" 같은 도래현황 코드를 한글로 바꾼다.
+	function koStatusText(s) {
+		if (!s) return '';
+		if (/probably\s+extinct/i.test(s)) return '절멸 추정';
+		return String(s).split(',').map(part => {
+			const out = [];
+			part.trim().split(/\s+/).filter(Boolean).forEach(t => {
+				const m = t.match(/^(Res|WV|SV|PM|Vag)(?:\/(ab|c|uc|sc|r))?([NSI])?$/);
+				if (m) {
+					const extra = [];
+					if (m[2]) extra.push(KO_FREQ[m[2]]);
+					if (m[3]) extra.push(KO_REGION[m[3]]);
+					out.push({ name: KO_STATUS[m[1]], extra });
+				} else if (/^[NSI]$/.test(t) && out.length) {
+					out[out.length - 1].extra.push(KO_REGION[t]);
+				} else {
+					out.push({ name: t, extra: [] });
+				}
+			});
+			return out.map(o => o.name + (o.extra.length ? ' (' + o.extra.join(', ') + ')' : '')).join(' · ');
+		}).join(', ');
+	}
+
+	function _koRow(label, html) {
+		return html ? `<div class="ko-sec"><div class="ko-h">${label}</div><div>${html}</div></div>` : '';
+	}
+
+	function koreaPopupHtml(d, info, koreaLoaded) {
+		const ko = (info && info.ko) || d.ko || '';
+		const en = (info && info.en) || d.en || '';
+		const sci = (info && info.sci) || String(d.n || '').replace(/_/g, ' ');
+		const auth = info && info.auth ? ` <span>${_koEsc(info.auth)}</span>` : '';
+		const order = (info && info.order) || d.o || '';
+		const family = (info && info.family) || String(d.f || '').replace(/\s*\(.*\)\s*$/, '');
+		const ebird = d.ebird_code ? `<a href="https://ebird.org/species/${encodeURIComponent(d.ebird_code)}" target="_blank" rel="noopener">eBird에서 보기</a>` : '';
+		let h = '';
+		h += `<div class="ko-title">${_koEsc(ko || en || sci)}</div>`;
+		if (ko && en) h += `<div class="ko-en">${_koEsc(en)}</div>`;
+		h += `<div class="ko-sci">${_koEsc(sci)}${auth}</div>`;
+		h += `<div class="ko-tax">${_koEsc(order)}${family ? ' · ' + _koEsc(family) : ''}</div>`;
+
+		if (!info) {
+			h += _koRow('한국 기록', koreaLoaded
+				? '<span class="ko-muted">한국 목록에 없는 종입니다.</span>'
+				: '<span class="ko-muted">한국 정보를 불러오는 중이거나 불러오지 못했습니다.</span>');
+			if (ebird) h += `<div class="ko-sec">${ebird}</div>`;
+			return h;
+		}
+
+		// 한국 도래
+		const arr = [];
+		const st = koStatusText(info.status);
+		if (st) arr.push(`<div><b>도래</b> ${_koEsc(st)}</div>`);
+		if (info.freq) arr.push(`<div><b>관찰 빈도</b> ${_koEsc(info.freq)} <span class="ko-muted">(1 흔함 ~ 5 희귀)</span></div>`);
+		if (info.kor != null && String(info.kor) !== '1') arr.push(`<div><b>목록 구분</b> KOR ${_koEsc(info.kor)}</div>`);
+		h += _koRow('한국 도래', arr.join(''));
+
+		// 보호 등급
+		const prot = [];
+		if (info.iucn) prot.push(`<span class="ko-badge" style="background:#1a1f2a;border-color:#2a3a5a;color:#9ac;">IUCN ${_koEsc(KO_IUCN[info.iucn] || info.iucn)} (${_koEsc(info.iucn)})</span>`);
+		if (info.endg) prot.push(`<span class="ko-badge">멸종위기 야생생물 ${_koEsc(info.endg)}급</span>`);
+		if (info.monument) prot.push(`<span class="ko-badge">천연기념물 제${_koEsc(info.monument)}호</span>`);
+		if (info.marine) prot.push(`<span class="ko-badge">해양보호생물</span>`);
+		if (info.cites) prot.push(`<span class="ko-badge" style="background:#1a2a1f;border-color:#2a5a3a;color:#9c9;">CITES 부속서 ${_koEsc(info.cites)}</span>`);
+		h += _koRow('보호 등급', prot.join(''));
+
+		// 분포
+		h += _koRow('분포', info.range_ko ? _koText(info.range_ko) : '');
+
+		// 한국 아종
+		if (info.ssp && info.ssp.length) {
+			h += _koRow('한국 아종', info.ssp.map(s => {
+				const parts = [];
+				const sst = koStatusText(s.status);
+				if (sst) parts.push(_koEsc(sst));
+				if (s.range_ko) parts.push(_koText(s.range_ko));
+				if (s.note) parts.push(`<span class="ko-muted">${_koText(s.note)}</span>`);
+				return `<div class="ko-ssp"><span class="ko-sci">${_koEsc(s.sci)}${s.auth ? ' <span>' + _koEsc(s.auth) + '</span>' : ''}</span>${parts.length ? '<br>' + parts.join('<br>') : ''}</div>`;
+			}).join(''));
+		}
+
+		// 국내 기록
+		h += _koRow('국내 기록', info.note ? _koText(info.note) : '');
+
+		// 주변국 이름
+		if (info.names) {
+			const nm = [];
+			KO_NEIGHBORS.forEach(([k, label]) => {
+				if (!info.names[k]) return;
+				let v = _koEsc(info.names[k]);
+				if (k === 'jp' && info.names.jp_r) v += ` <span class="ko-muted">(${_koEsc(info.names.jp_r)})</span>`;
+				nm.push(`<div><b>${label}</b> ${v}</div>`);
+			});
+			let notes = '';
+			if (info.name_notes) {
+				notes = Object.keys(info.name_notes).map(k => `<div class="ko-muted">${_koText(info.name_notes[k])}</div>`).join('');
+			}
+			h += _koRow('주변국 이름', nm.join('') + notes);
+		}
+
+		if (ebird) h += `<div class="ko-sec">${ebird}</div>`;
+		h += `<div class="ko-src">출처: AviList v2026 한국 목록 (분포는 기계 번역)</div>`;
+		return h;
+	}
+
+	function showKoreaPopup(d) {
+		const box = document.getElementById('korea-popup');
+		if (!box || !d) return;
+		const info = KOREA_INFO ? KOREA_INFO[d.n] : null;
+		document.getElementById('korea-popup-body').innerHTML = koreaPopupHtml(d, info, KOREA_INFO !== null);
+		box.scrollTop = 0;
+		box.style.display = 'block';
+	}
+	function hideKoreaPopup() {
+		const box = document.getElementById('korea-popup');
+		if (box) box.style.display = 'none';
+	}
+
 	function setupInteraction() {
 		const plotDiv = document.getElementById('plot');
 		plotDiv.on('plotly_click', function(data){
-			if (!data || !data.points || data.points.length === 0) { if (highlightedNodeId) { highlightedNodeId = null; renderPlot(); } return; }
+			if (!data || !data.points || data.points.length === 0) { hideKoreaPopup(); if (highlightedNodeId) { highlightedNodeId = null; renderPlot(); } return; }
 			let clickedId = data.points[0].customdata; if (!clickedId) return;
 			highlightedNodeId = clickedId; renderPlot();
+			const node = treeMap[clickedId];
+			if (node && node._isLeaf) showKoreaPopup(node); else hideKoreaPopup();
 		});
 	}
 
@@ -1497,6 +1652,8 @@
 
 	function resetSearchLogic() { document.getElementById('sch').value=''; currentTargets=[]; highlightedNodeId=null; tsSetFocus(null); document.getElementById('mrca-display').style.display='none'; document.getElementById('analysis-window').style.display='none'; renderPlot(); }
 	initApp();
+	// [V13.1] 한국 조류 정보: 계통수와 별개로 불러오며, 실패해도 계통수에는 영향이 없다.
+	fetch('korea_info.json?v=13.1').then(r => r.ok ? r.json() : null).then(j => { if (j) KOREA_INFO = j; }).catch(() => {});
 </script>
 
 <!-- [KINSHIP] 촌수(친족도) 라벨 추가. 상대 거리(phyloDist)는 유지, 옆에 촌수 컬럼을 덧붙임. -->
